@@ -758,7 +758,7 @@ footer { display:none !important; }
 /* tables: dates and statuses never break mid-value */
 .chelsy-kb-table td:nth-child(4), .chelsy-kb-table td:nth-child(5), .chelsy-kb-table td:nth-child(6),
 .chelsy-items-table td:nth-child(2), .chelsy-items-table td:nth-child(3), .chelsy-items-table td:nth-child(4),
-.chelsy-jobs-table td:nth-child(3), .chelsy-jobs-table td:nth-child(6),
+.chelsy-jobs-table td:nth-child(3), .chelsy-jobs-table td:nth-child(6), .chelsy-jobs-table td:nth-child(1) *,
 .chelsy-kb-table td:nth-child(2), .chelsy-kb-table td:nth-child(2) *, .chelsy-kb-table td:nth-child(4) *, .chelsy-kb-table td:nth-child(5) *,
 .chelsy-kb-table td:nth-child(6) *, .chelsy-items-table td:nth-child(2) *, .chelsy-items-table td:nth-child(3) *,
 .chelsy-items-table td:nth-child(4) *, .chelsy-jobs-table td:nth-child(3) *, .chelsy-jobs-table td:nth-child(6) *,
@@ -950,9 +950,9 @@ def build():
                     auto = gr.Checkbox(label='Добавлять без проверки', value=False, scale=1)
                     start_btn = gr.Button('Начать исследование', variant='primary', scale=1)
                 research_msg = gr.Markdown()
-                jobs_table = gr.Dataframe(headers=['ID', 'Тема', 'Статус', 'Прогресс', 'Сообщение', 'Создано'],
+                jobs_table = gr.Dataframe(headers=['ID', 'Тема', 'Статус', '%', 'Сообщение', 'Создано'],
                                           interactive=False, wrap=True, label='Задачи', elem_classes='chelsy-jobs-table',
-                                          column_widths=['8%', '22%', '9%', '9%', '34%', '18%'])
+                                          column_widths=['11%', '22%', '10%', '7%', '32%', '18%'])
                 with gr.Row():
                     job_pick = gr.Dropdown(choices=[], label='Открыть исследование', scale=3)
                     stop_job_btn = gr.Button('Остановить', scale=1)
@@ -1004,9 +1004,9 @@ def build():
                     kb_scope = gr.Radio(['Все', 'Личная', 'Общая'], value='Все', label='База', scale=2)
                     kb_refresh = gr.Button('Показать', scale=1)
                 kb_summary = gr.Markdown()
-                kb_table = gr.Dataframe(headers=['ID', 'База', 'Заголовок', 'Опубликовано', 'Получено', 'Доверие', 'Версия', 'Ссылка'],
+                kb_table = gr.Dataframe(headers=['ID', 'База', 'Заголовок', 'Дата публ.', 'Получено', 'Доверие', 'Версия', 'Ссылка'],
                                         interactive=False, wrap=True, elem_classes='chelsy-kb-table',
-                                        column_widths=['5%', '9%', '22%', '12%', '16%', '8%', '7%', '21%'])
+                                        column_widths=['5%', '9%', '21%', '13%', '13%', '10%', '9%', '20%'])
                 with gr.Row():
                     kb_search = gr.Textbox(label='Проверить поиск по базе', placeholder='О чём спросить базу?', scale=4)
                     kb_search_btn = gr.Button('Найти', scale=1)
