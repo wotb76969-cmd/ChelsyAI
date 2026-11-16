@@ -13,13 +13,14 @@ _OPENER = build_opener(ProxyHandler({}), NoRedirect())
 _MAX_RESPONSE = 240_000
 
 
-def fetch_json(base, parameters, headers=None):
+def fetch_json(base, parameters, headers=None, max_bytes=None):
     """Read JSON from a fixed, developer-selected HTTPS endpoint."""
-    url = base + '?' + urlencode(parameters)
+    limit = max_bytes or _MAX_RESPONSE
+    url = base + ('?' + urlencode(parameters) if parameters else '')
     request = Request(url, headers={'User-Agent': 'ChelsyAI/0.9.3 (personal assistant)', 'Accept':'application/json', **(headers or {})})
     with _OPENER.open(request, timeout=9) as response:
-        content = response.read(_MAX_RESPONSE + 1)
-        if len(content) > _MAX_RESPONSE:
+        content = response.read(limit + 1)
+        if len(content) > limit:
             raise ValueError('Ответ сервиса слишком большой')
         return json.loads(content.decode('utf-8'))
 

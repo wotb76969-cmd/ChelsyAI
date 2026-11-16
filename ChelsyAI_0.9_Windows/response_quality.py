@@ -64,15 +64,17 @@ def capability_answer(question, online_search_enabled=False):
     if not re.search(r'(?:интернет|сет[ьи]|сайт|источник|ресурс|знани|данны|information|internet|web|самообуч)', q):
         return None
     if requested_language(question) == 'en':
-        return ('I do not retrain my model automatically. I can search the web when a configured '
-                'search service is available, and I can save selected source information in a '
-                'knowledge base. These are not the same as training my model weights.')
-    search = ('Я могу искать актуальную информацию через подключённый поисковый сервис.'
+        return ('I do not retrain my model automatically. I search free open sources (Wikipedia, news feeds, '
+                'Stack Overflow, PyPI, GitHub) and save reliable material in my knowledge base. '
+                'That is not the same as training my model weights.')
+    search = ('Но я сама ищу актуальную информацию в открытых источниках — Википедии, новостных лентах, '
+              'Stack Overflow, PyPI и GitHub — без платных сервисов, и сохраняю надёжные материалы '
+              'в свою базу знаний, чтобы использовать их в следующих ответах.'
               if online_search_enabled else
-              'Для общего поиска в интернете нужно настроить Brave Search API на сервере.')
-    return ('Нет, я не переобучаю свою языковую модель самостоятельно. '
-            + search + ' Я также могу сохранять сведения из разрешённых источников в базу знаний '
-            'и использовать их в ответах. Это поиск и пополнение базы, а не изменение весов модели.')
+              'Сейчас поиск в интернете недоступен, поэтому отвечаю по базе знаний, которую уже собрала, '
+              'и по своим знаниям.')
+    return ('Нет, я не переобучаю свою языковую модель самостоятельно. ' + search +
+            ' Это поиск и пополнение базы знаний, а не изменение весов модели.')
 
 
 # ---------------------------------------------------------------- 0.9.3 checks

@@ -28,7 +28,7 @@
    tailscale serve --bg 8787
    ```
    Адрес вида `https://ноутбук.имя-сети.ts.net` вводится в клиентах. **Не** открывай порт на роутере и **не** используй Tailscale Funnel.
-6. Онлайн-поиск (необязательно): ключ Brave Search API в переменной окружения `CHELSY_BRAVE_SEARCH_KEY` на ноутбуке. Клиентам ключ не передаётся. Без ключа Chelsy честно сообщает, что поиск недоступен.
+6. Онлайн-поиск и автоизучение работают бесплатно и без ключей: Википедия, новостные RSS, Hacker News, Stack Overflow, PyPI, GitHub. По желанию — свой SearXNG (`CHELSY_SEARXNG_URL`) или платный Brave (`CHELSY_BRAVE_SEARCH_KEY`).
 
 ## 2. Windows Client
 

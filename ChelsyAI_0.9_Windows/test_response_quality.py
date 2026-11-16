@@ -7,11 +7,14 @@ class ResponseQualityTests(unittest.TestCase):
     def test_screenshot_question(self):
         answer = rq.capability_answer('ты самостоятельно изучаешь интернет?', False)
         self.assertIn('не переобучаю', answer)
-        self.assertIn('Brave Search API', answer)
+        self.assertIn('поиск в интернете недоступен', answer)
+        self.assertNotIn('Brave', answer)      # no paid service is required any more
         self.assertNotIn('learn from', answer)
 
     def test_web_enabled(self):
-        self.assertIn('могу искать', rq.capability_answer('Ты обучаешься на данных сайтов?', True))
+        answer = rq.capability_answer('Ты обучаешься на данных сайтов?', True)
+        self.assertIn('ищу актуальную информацию', answer)
+        self.assertIn('без платных сервисов', answer)
 
     def test_unrelated_not_intercepted(self):
         self.assertIsNone(rq.capability_answer('Как изучать Python самостоятельно?'))

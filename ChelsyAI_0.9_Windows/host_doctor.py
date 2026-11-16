@@ -123,9 +123,8 @@ def checks():
     from knowledge.search_manager import SearchManager
     online = live_tools.internet_available()
     add(OK if online else WARN, 'Интернет', 'есть' if online else 'нет — работают только локальные знания')
-    add(OK if SearchManager.configured() else WARN, 'Поисковый API (Brave)',
-        'настроен' if SearchManager.configured() else 'не задан — нет свежего поиска и «любопытства» автоизучения',
-        'Задай переменную окружения CHELSY_BRAVE_SEARCH_KEY на этом ноутбуке')
+    add(OK, 'Поиск и автоизучение', SearchManager.provider_label() + ' — без платных ключей',
+        'По желанию: свой бесплатный поиск по всему интернету — SearXNG (CHELSY_SEARXNG_URL), см. Установка.md')
     learn = autolearn.settings()
     add(OK if learn['enabled'] else WARN, 'Автоизучение',
         ('включено' if learn['enabled'] else 'выключено') +
