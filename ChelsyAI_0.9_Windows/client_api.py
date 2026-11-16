@@ -1,7 +1,10 @@
 """HTTP client for Chelsy Host (no GUI dependencies; used by the Windows client and tests)."""
 from __future__ import annotations
 
+import ipaddress
 import json
+import socket
+import ssl
 import uuid
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlsplit
@@ -24,10 +27,45 @@ def validate_host(host):
     if u.username or u.password or u.query or u.fragment or u.path not in ('', '/'):
         raise ValueError('Укажи только адрес хоста, без пути, логина и параметров.')
     if u.scheme == 'https' and u.hostname:
-        return host
+        try:
+            ipaddress.ip_address(u.hostname)
+        except ValueError:
+            return host
+        raise ValueError('Укажи имя хоста из Tailscale (https://имя-пк.tailnet.ts.net), а не IP-адрес 100.x.x.x: '
+                         'HTTPS-сертификат Tailscale выдаётся только на имя.')
     if host in ('http://127.0.0.1:8787', 'http://localhost:8787'):
         return host  # same-PC test only
     raise ValueError('Используй HTTPS-адрес Tailscale Serve (https://имя.tailnet.ts.net). HTTP разрешён только для localhost.')
+
+
+def explain_network_error(exc, base=''):
+    """Turn a low-level connection failure into a concrete Russian hint."""
+    reason = getattr(exc, 'reason', exc)
+    name = urlsplit(base).hostname or 'хост'
+    if isinstance(reason, ssl.SSLCertVerificationError) or 'CERTIFICATE_VERIFY_FAILED' in str(reason):
+        return (f'Сертификат {name} не прошёл проверку. Адрес должен быть именем из Tailscale Serve '
+                '(https://имя-пк.tailnet.ts.net); в админке Tailscale (DNS) должны быть включены MagicDNS и HTTPS Certificates.')
+    if isinstance(reason, ssl.SSLError):
+        return f'Ошибка защищённого соединения с {name}: {reason}. Проверь, что на хосте включён доступ (tailscale serve).'
+    if isinstance(reason, socket.gaierror):
+        return (f'Адрес {name} не найден. На ЭТОМ компьютере Tailscale выключен или вошёл в другой аккаунт, '
+                'либо в адресе опечатка. Включи Tailscale (Connected) тем же аккаунтом, что и на хосте.')
+    if isinstance(reason, ConnectionRefusedError):
+        return ('Компьютер-хост найден, но доступ для устройств на нём не включён. На хосте запусти '
+                '«Chelsy AI Host — включить доступ с устройств (Tailscale)» или: tailscale serve --bg 8787.')
+    if isinstance(reason, (TimeoutError, socket.timeout)) or 'timed out' in str(reason):
+        return ('Хост не отвечает: компьютер выключен или спит, или Tailscale на нём отключён. '
+                'Проверь, что ноутбук включён и в Tailscale он «Connected».')
+    if isinstance(reason, ConnectionResetError):
+        return 'Хост разорвал соединение. Проверь, что Chelsy AI Host запущен, и попробуй ещё раз.'
+    return f'Хост недоступен ({reason}). Проверь Tailscale на обоих компьютерах, адрес и запущен ли Chelsy AI Host.'
+
+
+def explain_http_status(code):
+    if code in (502, 503, 504):
+        return ('Tailscale на хосте работает, но Chelsy AI Host не запущен или ещё загружается '
+                f'(HTTP {code}). Запусти «Chelsy AI Host» на компьютере с нейросетью.')
+    return None
 
 
 class HostClient:
@@ -61,9 +99,9 @@ class HostClient:
                     message = f'HTTP {exc.code}'
                 if exc.code == 401:
                     raise Unauthorized('Сессия истекла — войди снова.', 401) from exc
-                raise HostError(message, exc.code) from exc
-            except URLError as exc:
-                raise HostError('Хост недоступен. Проверь Tailscale, адрес и включён ли ноутбук.') from exc
+                raise HostError(explain_http_status(exc.code) or message, exc.code) from exc
+            except (URLError, OSError) as exc:
+                raise HostError(explain_network_error(exc, self.base)) from exc
         raise Unauthorized('Сессия истекла — войди снова.', 401)
 
     def call(self, method, path, payload=None):
@@ -73,8 +111,15 @@ class HostClient:
 
     # ------------------------------------------------------------ endpoints
     def health(self):
-        with self.opener.open(self.base + '/api/health', timeout=8) as resp:
-            return json.load(resp)
+        try:
+            with self.opener.open(self.base + '/api/health', timeout=8) as resp:
+                return json.load(resp)
+        except HTTPError as exc:
+            raise HostError(explain_http_status(exc.code) or f'Хост ответил HTTP {exc.code}.', exc.code) from exc
+        except (URLError, OSError) as exc:
+            raise HostError(explain_network_error(exc, self.base)) from exc
+        except ValueError as exc:
+            raise HostError('По этому адресу отвечает не Chelsy AI Host. Проверь адрес.') from exc
 
     def status(self):
         return self.call('GET', '/api/v2/status')

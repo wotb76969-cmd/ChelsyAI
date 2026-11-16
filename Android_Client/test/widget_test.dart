@@ -181,5 +181,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
+
+  test('host connection errors name the cause', () {
+    const base = 'https://laptop.tail1234.ts.net';
+    expect(explainNetworkError(const SocketException('Failed host lookup: laptop.tail1234.ts.net'), base), contains('не найден'));
+    expect(explainNetworkError(const SocketException('Connection refused'), base), contains('доступ для устройств'));
+    expect(explainNetworkError(const HandshakeException('CERTIFICATE_VERIFY_FAILED'), base), contains('Сертификат'));
+    expect(explainHttpStatus(502), contains('не запущен'));
+    expect(explainHttpStatus(404), isNull);
+  });
 }
 

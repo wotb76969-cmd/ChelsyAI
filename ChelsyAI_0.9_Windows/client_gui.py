@@ -588,7 +588,10 @@ class ChelsyClientApp:
                 self.events.put(('call', (then, result)))
             except Unauthorized:
                 self.events.put(('unauthorized', None))
-            except (HostError, AuthError, OSError) as exc:
+            except HostError as exc:
+                # network problems and 502/503/504 explain themselves once; other errors go to the status line
+                self.events.put(('offline' if exc.status in (None, 502, 503, 504) else 'error', str(exc)))
+            except (AuthError, OSError) as exc:
                 self.events.put(('error', str(exc)))
         self._background(job)
 
@@ -710,9 +713,9 @@ class ChelsyClientApp:
             return items
         except Unauthorized:
             raise
-        except HostError:
+        except HostError as exc:
             items = client_cache.load_conversations(self._account(), query)
-            self.events.put(('offline', 'Хост недоступен — показана сохранённая на этом ПК копия'))
+            self.events.put(('offline', f'{exc} Показана сохранённая на этом ПК копия.'))
             return items
 
     def _cached_messages(self, conversation_id):
@@ -722,9 +725,9 @@ class ChelsyClientApp:
             return items
         except Unauthorized:
             raise
-        except HostError:
+        except HostError as exc:
             items = client_cache.load_messages(self._account(), conversation_id)
-            self.events.put(('offline', 'Хост недоступен — показана сохранённая копия диалога'))
+            self.events.put(('offline', f'{exc} Показана сохранённая копия диалога.'))
             return items
 
     def load_conversations(self):
@@ -1081,7 +1084,11 @@ class ChelsyClientApp:
             self.logout()
         elif kind == 'offline':
             if self.main_frame:
-                self._set_status('offline', payload)
+                self._set_status('offline', payload[:120])
+                # The status line is short: explain the exact cause once, in full.
+                if not getattr(self, '_offline_explained', False):
+                    self._offline_explained = True
+                    messagebox.showwarning('Chelsy AI — нет связи с хостом', payload)
         elif kind == 'error':
             if self.main_frame:
                 self._set_status('offline', payload[:90])
@@ -1103,6 +1110,7 @@ class ChelsyClientApp:
                 self.model_box.configure(values=models)
                 if models and not self.model_var.get():
                     self.model_var.set(result.get('default_model') if result.get('default_model') in models else models[0])
+                self._offline_explained = False
                 ok = result.get('ollama')
                 self._set_status('ready' if ok else 'offline',
                                  f'Host {result.get("version", "")} · ' + ('модель готова' if ok else 'Ollama недоступна на хосте'))

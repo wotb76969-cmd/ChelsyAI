@@ -96,3 +96,31 @@ bool isSafeLink(String? href) {
   final uri = Uri.tryParse(href ?? '');
   return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty;
 }
+
+
+/// Concrete Russian explanation of why the host could not be reached.
+String explainNetworkError(Object error, String base) {
+  final host = Uri.tryParse(base)?.host ?? 'хост';
+  final text = error.toString();
+  if (text.contains('HandshakeException') || text.contains('CERTIFICATE_VERIFY_FAILED')) {
+    return 'Сертификат $host не прошёл проверку. Адрес должен быть именем из Tailscale Serve '
+        '(https://имя-пк.tailnet.ts.net); в админке Tailscale включите MagicDNS и HTTPS Certificates.';
+  }
+  if (text.contains('Failed host lookup') || text.contains('No address associated')) {
+    return 'Адрес $host не найден. На телефоне выключен Tailscale или он вошёл в другой аккаунт, '
+        'либо в адресе опечатка. Включи Tailscale (Connected) тем же аккаунтом, что и на хосте.';
+  }
+  if (text.contains('Connection refused')) {
+    return 'Компьютер-хост найден, но доступ для устройств на нём не включён. На хосте запусти '
+        '«Chelsy AI Host — включить доступ с устройств (Tailscale)».';
+  }
+  if (text.contains('TimeoutException') || text.contains('timed out')) {
+    return 'Хост не отвечает: компьютер выключен или спит, или Tailscale на нём отключён.';
+  }
+  return 'Хост недоступен. Проверь Tailscale на телефоне и на хосте и что Chelsy AI Host запущен.';
+}
+
+/// 502/503/504 from Tailscale Serve: the tunnel works but Chelsy AI Host is not running.
+String? explainHttpStatus(int code) => (code == 502 || code == 503 || code == 504)
+    ? 'Tailscale на хосте работает, но Chelsy AI Host не запущен или ещё загружается (HTTP $code).'
+    : null;

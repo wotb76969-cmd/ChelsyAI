@@ -54,21 +54,29 @@ class HostApi {
     http.StreamedResponse response;
     try {
       response = await _client.send(request).timeout(const Duration(seconds: 30));
-    } on SocketException {
-      throw HostException('Хост недоступен. Проверь, что ноутбук включён и Tailscale подключён.');
-    } on TimeoutException {
-      throw HostException('Хост не отвечает. Попробуй позже.');
-    } on http.ClientException {
-      throw HostException('Нет соединения с хостом.');
+    } on SocketException catch (e) {
+      throw HostException(explainNetworkError(e, base));
+    } on HandshakeException catch (e) {
+      throw HostException(explainNetworkError(e, base));
+    } on TimeoutException catch (e) {
+      throw HostException(explainNetworkError(e, base));
+    } on http.ClientException catch (e) {
+      throw HostException(explainNetworkError(e, base));
     }
     final text = await response.stream.bytesToString();
     Map<String, dynamic> data = {};
     if (text.isNotEmpty) {
-      final decoded = jsonDecode(text);
-      if (decoded is Map<String, dynamic>) data = decoded;
+      try {
+        final decoded = jsonDecode(text);
+        if (decoded is Map<String, dynamic>) data = decoded;
+      } on FormatException {
+        // Tailscale Serve answers 502 with plain text when the host is not running.
+      }
     }
     if (response.statusCode >= 400) {
-      throw HostException((data['message'] ?? data['error'] ?? 'Ошибка ${response.statusCode}').toString(),
+      throw HostException(
+          explainHttpStatus(response.statusCode) ??
+              (data['message'] ?? data['error'] ?? 'Ошибка ${response.statusCode}').toString(),
           status: response.statusCode);
     }
     return data;
@@ -150,12 +158,14 @@ class HostApi {
     http.StreamedResponse response;
     try {
       response = await _client.send(request).timeout(const Duration(seconds: 45));
-    } on SocketException {
-      throw HostException('Хост недоступен. Проверь Tailscale и что ноутбук включён.');
-    } on TimeoutException {
-      throw HostException('Хост не отвечает.');
-    } on http.ClientException {
-      throw HostException('Нет соединения с хостом.');
+    } on SocketException catch (e) {
+      throw HostException(explainNetworkError(e, base));
+    } on HandshakeException catch (e) {
+      throw HostException(explainNetworkError(e, base));
+    } on TimeoutException catch (e) {
+      throw HostException(explainNetworkError(e, base));
+    } on http.ClientException catch (e) {
+      throw HostException(explainNetworkError(e, base));
     }
     if (response.statusCode >= 400) {
       final text = await response.stream.bytesToString();
@@ -166,7 +176,7 @@ class HostApi {
       } on FormatException {
         // keep generic message
       }
-      throw HostException(message, status: response.statusCode);
+      throw HostException(explainHttpStatus(response.statusCode) ?? message, status: response.statusCode);
     }
     yield* decodeNdjson(response.stream.timeout(const Duration(minutes: 5)));
   }
