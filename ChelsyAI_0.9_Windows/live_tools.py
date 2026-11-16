@@ -28,27 +28,177 @@ def is_weather(question):
     return bool(re.search(r'\b(погод[аыуеой]|температур[аыеуой]|weather|temperature|прогноз погод[ыа])\b', question, re.I))
 
 
-def weather_location(question):
-    # Require an explicit place: do NOT infer user's location, city, or GPS.
-    q = question.strip().rstrip(' ?!.,')
-    for pattern in (r'\b(?:в|во|для|по)\s+([\w\-]+(?:[ -][\w\-]+){0,2})', r'\bin\s+([A-Za-z][A-Za-z -]{1,50})'):
-        m = re.search(pattern, q, re.I)
-        if m:
-            city = re.split(r'\s+(?:сегодня|завтра|сейчас|на сегодня|на завтра|today|tomorrow|now)\b', m.group(1), maxsplit=1, flags=re.I)[0]
-            if city.strip().lower() not in {'общем','целом','этом','городе','моем','моём','доме'}:
-                return city.strip()[:60]
+# ------------------------------------------------------------------ weather
+# Countries a user may name next to the city ("Россия, Самара", "Самара Россия").
+# Stems are matched against the start of the word, so case forms work too.
+_COUNTRIES = [
+    ('росси', 'RU'), ('рф', 'RU'), ('russia', 'RU'), ('украин', 'UA'), ('ukrain', 'UA'), ('беларус', 'BY'),
+    ('белорус', 'BY'), ('belarus', 'BY'), ('казахстан', 'KZ'), ('kazakhstan', 'KZ'), ('узбекистан', 'UZ'),
+    ('кыргызстан', 'KG'), ('киргизи', 'KG'), ('таджикистан', 'TJ'), ('туркменистан', 'TM'), ('армени', 'AM'),
+    ('грузи', 'GE'), ('азербайджан', 'AZ'), ('молдов', 'MD'), ('латви', 'LV'), ('литв', 'LT'), ('эстони', 'EE'),
+    ('польш', 'PL'), ('финлянди', 'FI'), ('германи', 'DE'), ('germany', 'DE'), ('франци', 'FR'), ('france', 'FR'),
+    ('итали', 'IT'), ('italy', 'IT'), ('испани', 'ES'), ('spain', 'ES'), ('великобритани', 'GB'), ('англи', 'GB'),
+    ('сша', 'US'), ('америк', 'US'), ('usa', 'US'), ('турци', 'TR'), ('turkey', 'TR'), ('китай', 'CN'),
+    ('китае', 'CN'), ('china', 'CN'), ('япони', 'JP'), ('japan', 'JP'), ('израил', 'IL'), ('оаэ', 'AE'),
+    ('египет', 'EG'), ('египт', 'EG'), ('таиланд', 'TH'), ('тайланд', 'TH'), ('чехи', 'CZ'), ('сербия', 'RS'),
+]
+_TIME_WORDS = r'(?:сегодня|завтра|послезавтра|сейчас|утром|днём|днем|вечером|ночью|на\s+сегодня|на\s+завтра|на\s+неделю|today|tomorrow|now)'
+_NOT_A_PLACE = {'общем', 'целом', 'этом', 'городе', 'моем', 'моём', 'доме', 'мире', 'мира', 'улице', 'там', 'тут',
+                'здесь', 'нашем', 'моём городе', 'моем городе', 'нашем городе'}
+
+
+def _country_code(word):
+    w = word.casefold().strip(' .')
+    for stem, code in _COUNTRIES:
+        if w == stem or (w.startswith(stem) and len(w) - len(stem) <= 3):
+            return code
     return None
 
 
+def weather_place(question):
+    """Return (place, country_code) named in a weather question, or (None, None).
+
+    Never infers the user's location. Understands "в Самаре", "для Самары",
+    "Россия, Самара", "Самара, Россия", "погода Самара", "weather in Samara".
+    """
+    q = re.sub(r'\s+', ' ', (question or '')).strip().rstrip(' ?!.')
+    m = (re.search(r'(?:^|\s)(?:в|во|для|по)\s+(.+)$', q, re.I)
+         or re.search(r'\bin\s+(.+)$', q, re.I)
+         or re.search(r'(?:погод\w*|температур\w*|прогноз\w*|weather)[\s:,\-—]+(.+)$', q, re.I))
+    if not m:
+        return None, None
+    rest = re.split(r'\s+' + _TIME_WORDS + r'\b|\?', m.group(1), maxsplit=1, flags=re.I)[0]
+    rest = re.sub(r'^(?:город(?:е|а)?|г\.)\s+', '', rest.strip(), flags=re.I)
+    # "в Россия, Самара" / "Россия Самара" / "Самара (Россия)"
+    parts = [p.strip(' ()') for p in re.split(r'[,;/()]', rest) if p.strip(' ()')]
+    country, places = None, []
+    for part in parts:
+        code = _country_code(part)
+        if code and not country:
+            country = code
+            continue
+        words = part.split()
+        if len(words) > 1 and _country_code(words[0]) and not country:
+            country, words = _country_code(words[0]), words[1:]
+        elif len(words) > 1 and _country_code(words[-1]) and not country:
+            country, words = _country_code(words[-1]), words[:-1]
+        if words:
+            places.append(' '.join(words))
+    place = places[0][:60].strip() if places else None
+    if not place or place.casefold() in _NOT_A_PLACE:
+        return None, country
+    return place, country
+
+
+def weather_location(question):
+    """0.9.2 compatible: the place name only."""
+    return weather_place(question)[0]
+
+
+def _word_forms(word, last):
+    """Nominative guesses for one Russian word in a prepositional/genitive form."""
+    w = word
+    low = w.casefold()
+    forms = [w]
+    if not re.search(r'[а-яё]$', low):
+        return forms
+    def cut(n, add=''):
+        return w[:-n] + add if n else w + add
+    if last:
+        if low.endswith('ле'):
+            forms += [cut(1, 'ь'), cut(1, 'я')]            # Ярославле → Ярославль
+        if low.endswith('ии'):
+            forms += [cut(1, 'я')]                          # Евпатории → Евпатория
+        elif low.endswith('и'):
+            forms += [cut(1, 'ь'), cut(1, 'а'), cut(1, 'я')]  # Казани → Казань, Махачкалы…
+        if low.endswith('е'):
+            forms += [cut(1, 'а'), cut(1), cut(1, 'о'), cut(1, 'я'), cut(1, 'ь')]  # Самаре, Омске, Иванове
+        if low.endswith('ы'):
+            forms += [cut(1, 'а')]                          # для Самары → Самара
+        if low.endswith('а') and len(low) > 4:
+            forms += [cut(1)]                               # для Новгорода → Новгород
+        if low.endswith('у'):
+            forms += [cut(1, 'а'), cut(1)]
+    else:  # adjectives: Нижнем Новгороде, Великом Новгороде, Старой Руссе
+        if low.endswith(('ем', 'ом')):
+            forms += [cut(2, 'ий'), cut(2, 'ый'), cut(2, 'ой')]
+        if low.endswith(('ой', 'ей')):
+            forms += [cut(2, 'ая'), cut(2, 'яя')]
+        if low.endswith(('его', 'ого')):
+            forms += [cut(3, 'ий'), cut(3, 'ый')]
+    seen, out = set(), []
+    for f in forms:
+        if f and f.casefold() not in seen:
+            seen.add(f.casefold())
+            out.append(f)
+    return out
+
+
+def place_candidates(place, limit=6):
+    """The place as written first, then nominative guesses ("Самаре" → "Самара")."""
+    hyphen = re.match(r'^(.+?)(-на-.+)$', place)        # Ростове-на-Дону → Ростов-на-Дону
+    head, tail = (hyphen.group(1), hyphen.group(2)) if hyphen else (place, '')
+    words = head.split()
+    if not words:
+        return [place]
+    out = [place]
+    if len(words) == 1:
+        out += [f + tail for f in _word_forms(words[0], True)]
+    else:
+        # Adjective + noun agree in gender: "Нижнем Новгороде" → "Нижний Новгород",
+        # "Старой Руссе" → "Старая Русса".
+        *adjectives, noun = words
+        low = adjectives[-1].casefold()
+        if low.endswith(('ем', 'ом')):
+            adj_forms = [[w[:-2] + 'ий', w[:-2] + 'ый'] for w in adjectives]
+            noun_forms = [noun[:-1], noun[:-1] + 'о'] if noun.casefold().endswith('е') else [noun]
+        elif low.endswith(('ой', 'ей')):
+            adj_forms = [[w[:-2] + 'ая', w[:-2] + 'яя'] for w in adjectives]
+            noun_forms = ([noun[:-1] + 'а', noun[:-1] + 'я'] if noun.casefold().endswith(('е', 'и')) else [noun])
+        elif low.endswith(('ых', 'их')):                  # Набережных Челнах → Набережные Челны
+            adj_forms = [[w[:-2] + 'ые', w[:-2] + 'ие'] for w in adjectives]
+            noun_forms = [noun[:-2] + 'ы', noun[:-2] + 'и'] if noun.casefold().endswith(('ах', 'ях')) else [noun]
+        else:
+            adj_forms = [[w] for w in adjectives]
+            noun_forms = _word_forms(noun, True)[1:]
+        for n in noun_forms:
+            for i in range(max(len(a) for a in adj_forms)):
+                out.append(' '.join([a[min(i, len(a) - 1)] for a in adj_forms] + [n]) + tail)
+    seen, unique = set(), []
+    for c in out:
+        if c.casefold() not in seen:
+            seen.add(c.casefold())
+            unique.append(c)
+    return unique[:limit]
+
+
+def geocode(place, country=None):
+    """Best match for a place name; tries nominative forms of Russian case endings."""
+    fallback = None
+    candidates = place_candidates(place)
+    names = {c.casefold() for c in candidates}
+    for candidate in candidates:
+        params = {'name': candidate, 'count': 10, 'language': 'ru', 'format': 'json'}
+        if country:
+            params['countryCode'] = country
+        results = fetch_json('https://geocoding-api.open-meteo.com/v1/search', params).get('results') or []
+        exact = [r for r in results if str(r.get('name', '')).casefold() in names]
+        if exact:
+            return max(exact, key=lambda r: r.get('population') or 0)
+        if results and fallback is None and candidate != place:
+            fallback = results[0]
+    return fallback
+
+
 def weather(question):
-    city = weather_location(question)
-    if not city:
-        return 'Уточни город, пожалуйста. Например: «Какая погода в Москве?» — я не определяю твоё местоположение автоматически.', []
-    locations = fetch_json('https://geocoding-api.open-meteo.com/v1/search', {'name': city, 'count': 1, 'language': 'ru'})
-    results = locations.get('results') or []
-    if not results:
-        return f'Не удалось найти город «{city}». Напиши название ещё раз, желательно с указанием страны.', []
-    item = results[0]
+    place, country = weather_place(question)
+    if not place:
+        return ('Уточни город, пожалуйста. Например: «Какая погода в Москве?» или «Погода: Самара, Россия» — '
+                'я не определяю твоё местоположение автоматически.'), []
+    item = geocode(place, country)
+    if not item:
+        return (f'Не нашла город «{place}». Напиши название в именительном падеже, при желании со страной — '
+                'например: «Погода: Самара, Россия».'), []
     forecast = fetch_json('https://api.open-meteo.com/v1/forecast', {
         'latitude': item['latitude'], 'longitude': item['longitude'],
         'current': 'temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,wind_speed_10m',
@@ -58,14 +208,25 @@ def weather(question):
     if current.get('temperature_2m') is None:
         return 'Погодный сервис не вернул температуру. Попробуй чуть позже.', []
     code = current.get('weather_code')
-    descriptions = {0:'ясно',1:'преимущественно ясно',2:'переменная облачность',3:'пасмурно',45:'туман',48:'изморозь',51:'слабая морось',53:'морось',55:'сильная морось',61:'небольшой дождь',63:'дождь',65:'сильный дождь',71:'небольшой снег',73:'снег',75:'сильный снег',80:'ливневый дождь',81:'ливень',82:'сильный ливень',95:'гроза'}
-    name = item.get('name', city)
-    country = item.get('country', '')
-    stamp = current.get('time', 'время неизвестно')
-    result = f'**{name}, {country}** — сейчас **{current["temperature_2m"]} °C**, {descriptions.get(code,"условия уточняются")}.\n\n'
+    descriptions = {0:'ясно',1:'преимущественно ясно',2:'переменная облачность',3:'пасмурно',45:'туман',48:'изморозь',51:'слабая морось',53:'морось',55:'сильная морось',56:'ледяная морось',57:'сильная ледяная морось',61:'небольшой дождь',63:'дождь',65:'сильный дождь',66:'ледяной дождь',67:'сильный ледяной дождь',71:'небольшой снег',73:'снег',75:'сильный снег',77:'снежная крупа',80:'ливневый дождь',81:'ливень',82:'сильный ливень',85:'снегопад',86:'сильный снегопад',95:'гроза',96:'гроза с градом',99:'сильная гроза с градом'}
+    name = item.get('name', place)
+    region = item.get('admin1', '')
+    country_name = item.get('country', '')
+    where = ', '.join(x for x in (name, region if region and region != name else '', country_name) if x)
+    stamp = str(current.get('time', 'время неизвестно')).replace('T', ' ')
+    result = f'**{where}** — сейчас **{current["temperature_2m"]} °C**, {descriptions.get(code, "условия уточняются")}.\n\n'
     result += f'Ощущается как {current.get("apparent_temperature","?")} °C; влажность {current.get("relative_humidity_2m","?")}%, ветер {current.get("wind_speed_10m","?")} км/ч.\n'
     result += f'\nДанные на {stamp} (местное время города). Источник: [Open-Meteo](https://open-meteo.com/).'
     return result, [{'url':'https://open-meteo.com/', 'title':'Open-Meteo', 'excerpt': str(current), 'kind':'weather'}]
+
+
+def is_weather_followup(previous_answer, question):
+    """True when Chelsy just asked which city and the user replies with a place only."""
+    prev = (previous_answer or '').strip()
+    if not prev.startswith(('Уточни город', 'Не нашла город', 'Не удалось найти город')):
+        return False
+    q = (question or '').strip()
+    return 0 < len(q) <= 60 and len(q.split()) <= 6 and not q.endswith('?')
 
 
 _RESEARCH = re.compile(

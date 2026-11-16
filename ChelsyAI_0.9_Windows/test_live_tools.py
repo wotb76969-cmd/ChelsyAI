@@ -33,4 +33,63 @@ class LiveTests(unittest.TestCase):
                 results,note=live_tools.brave_search('news')
         self.assertEqual(results[0]['title'],'Test')
         self.assertEqual(note,'')
+
+
+class WeatherPlaceTests(unittest.TestCase):
+    def test_places_from_russian_questions(self):
+        cases = {
+            'Какая погода в Самаре?': ('Самаре', None),
+            'погода в Россия, Самара': ('Самара', 'RU'),
+            'Погода: Самара, Россия': ('Самара', 'RU'),
+            'погода Самара': ('Самара', None),
+            'погода в Сочи завтра': ('Сочи', None),
+            'weather in Samara today': ('Samara', None),
+            'погода в моем городе': (None, None),
+        }
+        for question, expected in cases.items():
+            self.assertEqual(live_tools.weather_place(question), expected, question)
+
+    def test_nominative_candidates(self):
+        self.assertIn('Самара', live_tools.place_candidates('Самаре'))
+        self.assertIn('Казань', live_tools.place_candidates('Казани'))
+        self.assertIn('Нижний Новгород', live_tools.place_candidates('Нижнем Новгороде'))
+        self.assertIn('Ростов-на-Дону', live_tools.place_candidates('Ростове-на-Дону'))
+        self.assertIn('Набережные Челны', live_tools.place_candidates('Набережных Челнах'))
+
+    def _fake_geocoder(self, calls):
+        cities = {'самара': {'name': 'Самара', 'country': 'Россия', 'admin1': 'Самарская область',
+                             'latitude': 53.2, 'longitude': 50.15, 'population': 1163399}}
+        forecast = {'current': {'temperature_2m': -3, 'apparent_temperature': -8, 'relative_humidity_2m': 80,
+                                'wind_speed_10m': 12, 'weather_code': 71, 'time': '2026-11-16T12:00'}}
+
+        def fetch(base, params, headers=None):
+            calls.append(dict(params))
+            if 'geocoding' in base:
+                hit = cities.get(params['name'].casefold())
+                return {'results': [hit]} if hit else {}
+            return forecast
+        return fetch
+
+    def test_weather_in_samara_uses_nominative_form(self):
+        calls = []
+        with patch.object(live_tools, 'fetch_json', side_effect=self._fake_geocoder(calls)):
+            answer, sources = live_tools.weather('Какая погода в Самаре?')
+        self.assertIn('Самара', answer)
+        self.assertIn('-3 °C', answer)
+        self.assertEqual([c['name'] for c in calls if 'name' in c], ['Самаре', 'Самара'])
+
+    def test_weather_country_and_city(self):
+        calls = []
+        with patch.object(live_tools, 'fetch_json', side_effect=self._fake_geocoder(calls)):
+            answer, _ = live_tools.weather('погода в Россия, Самара')
+        self.assertIn('Самара, Самарская область, Россия', answer)
+        self.assertEqual(calls[0].get('countryCode'), 'RU')
+
+    def test_followup_after_clarification(self):
+        self.assertTrue(live_tools.is_weather_followup('Не нашла город «Самаре». Напиши…', 'Россия, Самара'))
+        self.assertTrue(live_tools.is_weather_followup('Уточни город, пожалуйста.', 'Самара'))
+        self.assertFalse(live_tools.is_weather_followup('Привет!', 'Россия, Самара'))
+        self.assertFalse(live_tools.is_weather_followup('Уточни город, пожалуйста.', 'а почему небо голубое?'))
+
+
 if __name__=='__main__': unittest.main()

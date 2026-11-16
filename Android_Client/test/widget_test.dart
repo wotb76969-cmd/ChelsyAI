@@ -161,4 +161,25 @@ void main() {
     expect(date.style?.color, ChelsyColors.teal);
     expect(find.text('Источники из интернета'), findsOneWidget);
   });
+
+  testWidgets('Russian system strings: answer text can be selected with the ru menu', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: chelsyTheme(),
+      locale: const Locale('ru'),
+      supportedLocales: const [Locale('ru'), Locale('en')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      // ignore: deprecated_member_use
+      builder: (context, child) => MaterialUiCompatibilityBridge(child: child!),
+      home: Scaffold(
+        body: MessageView(message: ChatMessage.fromJson(const {'role': 'assistant', 'content': 'Дело в рассеянии света.'})),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final context = tester.element(find.byType(MessageView));
+    expect(MaterialLocalizations.of(context).copyButtonLabel, 'Копировать');
+    await tester.longPress(find.textContaining('рассеянии', findRichText: true));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
 }
+

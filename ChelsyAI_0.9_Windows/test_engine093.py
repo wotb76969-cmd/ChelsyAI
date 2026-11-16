@@ -107,6 +107,21 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(len([c for c in llm.calls if c[0] == 'chat']), 1)
         self.assertTrue(any(e.get('state') == 'checking' for e in events))
 
+    def test_language_reminder_sits_right_before_the_user_turn(self):
+        llm = FakeLLM()
+        self.run_engine(self.engine(llm), 'Почему небо голубое?')
+        messages = llm.calls[0][2]
+        self.assertEqual(messages[-1]['role'], 'user')
+        self.assertEqual(messages[-2]['role'], 'system')
+        self.assertIn('только на русском', messages[-2]['content'])
+
+    def test_mixed_answer_is_rewritten_into_russian(self):
+        llm = FakeLLM(stream=['Небо голубое, this happens because короткие волны scatter сильнее.'],
+                      chat=['Небо голубое, потому что короткие волны рассеиваются сильнее.'] * 3)
+        _, done = self.run_engine(self.engine(llm), 'Почему небо голубое?')
+        self.assertNotIn('this happens', done['text'])
+        self.assertIn('рассеиваются', done['text'])
+
     def test_false_search_claim_removed_when_no_search(self):
         llm = FakeLLM(stream=['Я поискала в интернете: Python — это язык программирования общего назначения.'],
                       chat=['Я поискала в интернете: Python — язык программирования общего назначения.'])

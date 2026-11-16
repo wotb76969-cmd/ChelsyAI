@@ -33,6 +33,15 @@ class ChelsyApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         title: 'Chelsy AI',
         theme: chelsyTheme(),
+        // Russian system strings (text selection menu, tooltips, back button): without
+        // these delegates Flutter shows them in English next to the Russian UI.
+        locale: const Locale('ru'),
+        supportedLocales: const [Locale('ru'), Locale('en')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        // flutter_markdown_plus still builds its selection menu with legacy flutter/material
+        // localizations; without this bridge a long press on an answer crashes (see widget test).
+        // ignore: deprecated_member_use
+        builder: (context, child) => MaterialUiCompatibilityBridge(child: child!),
         home: configured
             ? const AuthGate()
             : const Scaffold(

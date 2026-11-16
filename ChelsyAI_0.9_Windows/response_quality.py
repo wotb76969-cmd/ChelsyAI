@@ -18,15 +18,42 @@ def requested_language(question):
     return 'ru' if cyr > lat and cyr >= 3 else 'en' if lat >= 3 and lat > cyr else None
 
 
+_ENGLISH_FUNCTION = {
+    'the', 'and', 'but', 'or', 'of', 'to', 'in', 'on', 'for', 'with', 'from', 'by', 'at', 'as', 'is', 'are', 'was',
+    'were', 'be', 'been', 'this', 'that', 'these', 'those', 'it', 'its', 'you', 'your', 'we', 'they', 'can', 'will',
+    'would', 'should', 'could', 'not', 'have', 'has', 'had', 'which', 'what', 'when', 'where', 'why', 'how', 'also',
+    'however', 'because', 'so', 'if', 'then', 'than', 'there', 'here', 'about', 'into', 'more', 'most', 'some', 'such',
+    'just', 'very', 'like', 'let', "let's", 'example', 'note', 'step', 'first', 'second', 'finally', 'well',
+}
+_LINK_TEXT = re.compile(r'\[[^\]]*\]\([^)]*\)')
+_LATIN_TOKEN = re.compile(r"(?<![\w-])[A-Za-z][A-Za-z']*(?![\w-])")
+
+
 def is_mixed_russian_answer(question, response):
-    """Find substantial stray English prose, ignoring code, URLs and product names."""
+    """Find stray English prose in a Russian answer.
+
+    Ignored: code, URLs, Markdown link texts (source titles), product names (capitalised
+    words that are not English function words) and known technical terms.
+    Flagged: two or more lowercase English words, any English function word used as prose,
+    or a run of three Latin words in a row.
+    """
     if requested_language(question) != 'ru':
         return False
-    # Markdown code and URLs are expected to contain English identifiers.
-    cleaned = re.sub(r'```.*?```|`[^`]*`|https?://\S+', ' ', response, flags=re.S | re.I)
-    words = [w.casefold() for w in _LATIN_WORD.findall(cleaned)]
-    foreign = [w for w in words if w not in _TECH_WORDS]
-    return len(foreign) >= 2 and (len(foreign) >= 3 or len(foreign) >= len(words) / 2)
+    cleaned = _LINK_TEXT.sub(' ', response or '')
+    cleaned = re.sub(r'```.*?```|`[^`]*`|https?://\S+', ' ', cleaned, flags=re.S | re.I)
+    tokens = _LATIN_TOKEN.findall(cleaned)
+    prose = []
+    for token in tokens:
+        low = token.casefold()
+        if low in _TECH_WORDS:
+            continue
+        if low in _ENGLISH_FUNCTION or (token[0].islower() and len(token) >= 3):
+            prose.append(low)
+    if len(prose) >= 2 or any(w in _ENGLISH_FUNCTION and len(w) > 3 for w in prose):
+        return True
+    # "Brave Search API" is fine; "Light Scatters More" style English sentences are not.
+    runs = re.findall(r"(?:[A-Za-z][A-Za-z']+[ ,]+){3,}[A-Za-z][A-Za-z']+", cleaned)
+    return any(sum(w.casefold() not in _TECH_WORDS for w in re.findall(r"[A-Za-z']+", r)) >= 3 for r in runs)
 
 
 def capability_answer(question, online_search_enabled=False):

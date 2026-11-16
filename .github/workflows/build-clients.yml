@@ -135,7 +135,7 @@ jobs:
           if [ -n "$KS" ]; then
             echo "$KS" | base64 -d > "$KS_PATH"
             { echo "CHELSY_KEYSTORE_PATH=$KS_PATH"; echo "CHELSY_KEYSTORE_PASSWORD=$KS_PASS";
-              echo "CHELSY_KEY_ALIAS=$KEY_ALIAS"; echo "CHELSY_KEY_PASSWORD=$KEY_PASS"; } >> "$GITHUB_ENV"
+              echo "CHELSY_KEY_ALIAS=$KEY_ALIAS"; echo "CHELSY_KEY_PASSWORD=$KEY_PASS"; echo "CHELSY_SIGNING_KIND=release"; } >> "$GITHUB_ENV"
           else
             echo "::warning::ANDROID_KEYSTORE_BASE64 not set: signing with a one-time key. Future APKs will not install as updates over this one."
             PASS=$(openssl rand -hex 24)
@@ -143,7 +143,7 @@ jobs:
               -storepass "$PASS" -keypass "$PASS" -dname "CN=Chelsy AI test build, O=Chelsy Group" >/dev/null
             echo "::add-mask::$PASS"
             { echo "CHELSY_KEYSTORE_PATH=$KS_PATH"; echo "CHELSY_KEYSTORE_PASSWORD=$PASS";
-              echo "CHELSY_KEY_ALIAS=chelsy"; echo "CHELSY_KEY_PASSWORD=$PASS"; } >> "$GITHUB_ENV"
+              echo "CHELSY_KEY_ALIAS=chelsy"; echo "CHELSY_KEY_PASSWORD=$PASS"; echo "CHELSY_SIGNING_KIND=one-time"; } >> "$GITHUB_ENV"
           fi
       - name: Build release APK (public Supabase URL + publishable key only)
         working-directory: Android_Client
@@ -168,6 +168,15 @@ jobs:
           grep -q 'android:usesCleartextTraffic(.*)=(type 0x12)0x0' manifest.txt
           if grep -q 'android:debuggable(.*)=(type 0x12)0xffffffff' manifest.txt; then echo "APK is debuggable"; exit 1; fi
           (cd dist && sha256sum ChelsyAI_Android_0.9.3.apk > SHA256SUMS.txt)
+          # Tell the person installing which key signed this APK (Play Protect trusts a stable publisher).
+          CERT=$("$APKSIGNER" verify --print-certs dist/ChelsyAI_Android_0.9.3.apk | grep -m1 'certificate SHA-256 digest' | sed 's/.*digest: //')
+          if [ "$CHELSY_SIGNING_KIND" = "one-time" ]; then
+            KIND="одноразовый ключ (тестовая сборка): обновление поверх прошлой версии невозможно, Play Защита будет предупреждать. См. Установка.md, п. 3.1."
+          else
+            KIND="постоянный ключ релиза"
+          fi
+          printf 'Подпись APK: %s\nSHA-256 сертификата: %s\n' "$KIND" "$CERT" > dist/SIGNING.txt
+          cat dist/SIGNING.txt
           rm -f "$RUNNER_TEMP/chelsy-release.jks"
       - uses: actions/upload-artifact@v4
         with:

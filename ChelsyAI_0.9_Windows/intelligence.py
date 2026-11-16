@@ -138,6 +138,15 @@ OFFLINE_GREETINGS_EN = [
 ]
 
 
+# Small local models drift into English (especially with English search results in the
+# context); a short reminder right before the user turn keeps the reply in one language.
+LANGUAGE_REMINDER = {
+    'ru': ('Ответь только на русском языке. Английские источники и термины переводи; латиницей оставляй '
+           'лишь названия продуктов, код, команды и ссылки.'),
+    'en': 'Reply only in English.',
+}
+
+
 class ChelsyEngine:
     def __init__(self, llm=None, knowledge=None, searcher=None):
         self.llm = llm or ollama_client
@@ -316,6 +325,11 @@ class ChelsyEngine:
             return
 
         route = live_tools.route(question, web_enabled)
+        weather_question = question
+        last_answer = next((m['content'] for m in reversed(prior_plain) if m['role'] == 'assistant'), '')
+        if route != 'weather' and live_tools.is_weather_followup(last_answer, question):
+            # Chelsy asked which city; "Россия, Самара" is the answer, not a new topic.
+            route, weather_question = 'weather', 'погода в ' + question.strip()
         live, local, note, searched = [], [], '', False
         online = None
 
@@ -331,7 +345,7 @@ class ChelsyEngine:
             else:
                 yield {'type': 'status', 'state': 'searching', 'text': 'Узнаю погоду…'}
                 try:
-                    text, sources = live_tools.weather(question)
+                    text, sources = live_tools.weather(weather_question)
                 except Exception:
                     text, sources = ('Не удалось связаться с погодным сервисом. Проверь подключение к интернету и повтори запрос.', [])
                 yield finish(text, sources=sources, searched=bool(sources), route='weather')
@@ -391,7 +405,9 @@ class ChelsyEngine:
             system = self.system_prompt(language, length, searched=searched, search_note=note, facts=facts,
                                         knowledge_context=knowledge_context, live_context=live_context, omitted=True,
                                         route=route)
-        messages = [{'role': 'system', 'content': system}] + window + [{'role': 'user', 'content': full_question}]
+        messages = ([{'role': 'system', 'content': system}] + window
+                    + [{'role': 'system', 'content': LANGUAGE_REMINDER[language]}]
+                    + [{'role': 'user', 'content': full_question}])
         prefix = ''
         if route in ('news', 'web') and not searched:
             reason = ('Поиск в интернете выключен' if not web_enabled else
@@ -471,10 +487,14 @@ class ChelsyEngine:
             if len(new_assessment.issues) < len(assessment.issues) or not new_assessment.serious:
                 answer, assessment = candidate, new_assessment
         if language == 'ru' and ('mixed-language' in assessment.issues or 'wrong-language' in assessment.issues):
-            rewritten = self._rewrite_russian(model_name, answer)
-            if rewritten and not rq.is_mixed_russian_answer(question, rewritten):
+            for _ in range(2):                 # a second pass catches what the first one missed
+                rewritten = self._rewrite_russian(model_name, answer)
+                if not rewritten:
+                    break
                 answer = rewritten
                 assessment = rq.assess(question, answer, language, searched)
+                if not rq.is_mixed_russian_answer(question, answer) and 'wrong-language' not in assessment.issues:
+                    break
         if not searched and 'false-search-claim' in assessment.issues:
             answer = rq.remove_false_search_claims(answer)
         final = prefix + answer.strip() + sources_md

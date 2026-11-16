@@ -35,5 +35,22 @@ class ResponseQualityTests(unittest.TestCase):
         self.assertIn('не переобучаю', save.call_args.args[2])
 
 
+class MixedLanguageTests(unittest.TestCase):
+    Q = 'Почему небо голубое?'
+
+    def test_english_prose_inside_russian_is_flagged(self):
+        for answer in ('Дело в рассеянии света. This happens because shorter waves scatter more.',
+                       'Это очень important момент и обычно relevant.',
+                       'However, свет рассеивается сильнее.'):
+            self.assertTrue(rq.is_mixed_russian_answer(self.Q, answer), answer)
+
+    def test_product_names_code_and_source_titles_are_fine(self):
+        for answer in ('Используй FastAPI и Pydantic, а запускай через Docker.',
+                       'Источник: [FastAPI release notes](https://fastapi.tiangolo.com/) — свежая версия.',
+                       'Это `print(name)` в Python.',
+                       'Модель Llama Guard и библиотека Hugging Face Transformers.'):
+            self.assertFalse(rq.is_mixed_russian_answer(self.Q, answer), answer)
+
+
 if __name__ == '__main__':
     unittest.main()
