@@ -23,3 +23,9 @@ flutter:
   uses-material-design: true
   assets:
     - chelsy_logo.png
+  # JetBrains Mono (Apache-2.0, see fonts/JetBrainsMono-LICENSE.txt): code blocks render
+  # monospace with Cyrillic on every device and renderer.
+  fonts:
+    - family: ChelsyMono
+      fonts:
+        - asset: fonts/JetBrainsMono-Regular.ttf

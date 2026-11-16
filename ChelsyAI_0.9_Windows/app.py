@@ -749,14 +749,23 @@ footer { display:none !important; }
 #chelsy-main { padding:12px clamp(10px, 3vw, 42px) 10px !important; max-width:1080px; margin:0 auto; width:100%; }
 #chelsy-topbar { align-items:center; gap:8px; padding-bottom:6px; flex-wrap:nowrap !important; }
 #chelsy-topbar > * { min-width:0 !important; }
-#chelsy-pulse-box { overflow:hidden; }
-#chelsy-pulse-box .chelsy-pulse-row { overflow:hidden; }
-#chelsy-pulse-box .pulse-meta { overflow:hidden; text-overflow:ellipsis; }
+#chelsy-topbar > div:first-child { flex:1 1 220px !important; min-width:140px !important; }
+#chelsy-pulse-box { flex:0 1 auto !important; min-width:150px !important; max-width:380px; overflow:hidden; }
+#chelsy-topbar > button { flex:none !important; white-space:nowrap !important; }
+#chelsy-pulse-box .chelsy-pulse-row { min-width:12px; }
+#chelsy-pulse-box .pulse-label { flex:none; }
+#chelsy-pulse-box .pulse-meta { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
 /* tables: dates and statuses never break mid-value */
 .chelsy-kb-table td:nth-child(4), .chelsy-kb-table td:nth-child(5), .chelsy-kb-table td:nth-child(6),
 .chelsy-items-table td:nth-child(2), .chelsy-items-table td:nth-child(3), .chelsy-items-table td:nth-child(4),
-.chelsy-jobs-table td:nth-child(3), .chelsy-jobs-table td:nth-child(6) { white-space:nowrap !important;
-  font-variant-numeric:tabular-nums; }
+.chelsy-jobs-table td:nth-child(3), .chelsy-jobs-table td:nth-child(6),
+.chelsy-kb-table td:nth-child(2), .chelsy-kb-table td:nth-child(2) *, .chelsy-kb-table td:nth-child(4) *, .chelsy-kb-table td:nth-child(5) *,
+.chelsy-kb-table td:nth-child(6) *, .chelsy-items-table td:nth-child(2) *, .chelsy-items-table td:nth-child(3) *,
+.chelsy-items-table td:nth-child(4) *, .chelsy-jobs-table td:nth-child(3) *, .chelsy-jobs-table td:nth-child(6) *,
+.chelsy-kb-table th *, .chelsy-items-table th *, .chelsy-jobs-table th * { white-space:nowrap !important; word-break:normal !important;
+  overflow-wrap:normal !important; font-variant-numeric:tabular-nums; }
+.chelsy-kb-table td:last-child *, .chelsy-items-table td:nth-child(6) * { white-space:nowrap !important; overflow:hidden;
+  text-overflow:ellipsis; max-width:30ch; display:block; word-break:normal !important; }
 .chelsy-kb-table td:nth-child(4), .chelsy-kb-table td:nth-child(5), .chelsy-items-table td:nth-child(4),
 .chelsy-jobs-table td:nth-child(6) { color:var(--chelsy-teal) !important; }
 .chelsy-conv-title { padding-right:10px; font-weight:600; font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -818,7 +827,7 @@ body:has(.pulse-offline) #chelsy-compose#chelsy-compose::before { background:#FF
 .chelsy-horizon { width:180px; height:2px; margin:18px auto 0; border-radius:2px; background:var(--chelsy-aurora); opacity:.45; }
 /* Chelsy Pulse (state dot in the top bar) */
 .chelsy-pulse-row { display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--chelsy-muted); white-space:nowrap; }
-.chelsy-pulse { position:relative; width:12px; height:12px; display:inline-block; }
+.chelsy-pulse { position:relative; width:12px; height:12px; min-width:12px; flex:none; display:inline-block; }
 .chelsy-pulse i { position:absolute; inset:2px; border-radius:50%; background:var(--pc); }
 .chelsy-pulse::after { content:''; position:absolute; inset:0; border-radius:50%; border:2px solid var(--pc); opacity:.0; }
 .pulse-ready { --pc:#21D9DA; } .pulse-generating { --pc:#A78BFA; } .pulse-checking { --pc:#A78BFA; }
@@ -848,8 +857,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
   .chelsy-journal li { grid-template-columns:1fr; gap:2px; }
 }
 @media (max-width: 480px) {
-  #chelsy-topbar button.chelsy-flat:last-child, #chelsy-topbar .chelsy-flat:last-child { display:none !important; }
-  #chelsy-topbar > div:first-child { flex:1 1 auto !important; }
+  /* title + state dot on the first line, both actions (favourite, sync) stay reachable below */
+  #chelsy-topbar { flex-wrap:wrap !important; row-gap:2px; }
+  #chelsy-topbar > div:first-child { flex:1 1 calc(100% - 40px) !important; }
+  #chelsy-pulse-box { flex:0 0 28px !important; min-width:28px !important; padding:0 !important; }
+  #chelsy-pulse-box > *, #chelsy-pulse-box .prose { padding:0 !important; min-width:12px !important; }
+  #chelsy-topbar > button, #chelsy-topbar > .chelsy-flat { flex:0 0 auto !important; }
   #chelsy-chat .avatar-container { display:none !important; }
   #chelsy-topbar .chelsy-flat, #chelsy-topbar button.chelsy-flat { white-space:nowrap !important; min-width:0 !important; padding:4px 6px !important; }
   #chelsy-chat .message-row.bot-row, #chelsy-chat .message-row.bot-row .message, #chelsy-chat .bot-row .flex-wrap { max-width:100% !important; width:100% !important; }
@@ -938,7 +951,8 @@ def build():
                     start_btn = gr.Button('Начать исследование', variant='primary', scale=1)
                 research_msg = gr.Markdown()
                 jobs_table = gr.Dataframe(headers=['ID', 'Тема', 'Статус', 'Прогресс', 'Сообщение', 'Создано'],
-                                          interactive=False, wrap=True, label='Задачи', elem_classes='chelsy-jobs-table')
+                                          interactive=False, wrap=True, label='Задачи', elem_classes='chelsy-jobs-table',
+                                          column_widths=['8%', '22%', '9%', '9%', '34%', '18%'])
                 with gr.Row():
                     job_pick = gr.Dropdown(choices=[], label='Открыть исследование', scale=3)
                     stop_job_btn = gr.Button('Остановить', scale=1)
@@ -946,7 +960,8 @@ def build():
                 job_head = gr.HTML()
                 items_table = gr.Dataframe(headers=['#', 'Статус', 'Доверие', 'Дата', 'Заголовок', 'Ссылка', 'Проверка'],
                                            interactive=False, wrap=True, label='Найденные материалы',
-                                           elem_classes='chelsy-items-table')
+                                           elem_classes='chelsy-items-table',
+                                           column_widths=['5%', '12%', '9%', '12%', '24%', '22%', '16%'])
                 item_pick = gr.CheckboxGroup(choices=[], label='Выбери материалы для решения')
                 with gr.Row():
                     accept_personal = gr.Button('В личную базу', variant='primary')
@@ -990,7 +1005,8 @@ def build():
                     kb_refresh = gr.Button('Показать', scale=1)
                 kb_summary = gr.Markdown()
                 kb_table = gr.Dataframe(headers=['ID', 'База', 'Заголовок', 'Опубликовано', 'Получено', 'Доверие', 'Версия', 'Ссылка'],
-                                        interactive=False, wrap=True, elem_classes='chelsy-kb-table')
+                                        interactive=False, wrap=True, elem_classes='chelsy-kb-table',
+                                        column_widths=['5%', '9%', '22%', '12%', '16%', '8%', '7%', '21%'])
                 with gr.Row():
                     kb_search = gr.Textbox(label='Проверить поиск по базе', placeholder='О чём спросить базу?', scale=4)
                     kb_search_btn = gr.Button('Найти', scale=1)

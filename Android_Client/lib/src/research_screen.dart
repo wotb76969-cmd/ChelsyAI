@@ -50,15 +50,16 @@ class _ResearchScreenState extends State<ResearchScreen> {
     'skipped': 'пропущено',
   };
 
-  /// Status, then the job message only when it adds something (the host often
-  /// repeats the status word as the message).
+  /// Status and job message without repeating the status word.
   static String jobLine(Map<String, dynamic> j) {
     final status = _status[j['status']] ?? '${j['status'] ?? ''}';
     final message = ((j['message'] ?? '') as String).trim();
-    final same = message.isEmpty ||
-        message.toLowerCase() == status.toLowerCase() ||
-        message.toLowerCase() == '${j['status']}'.toLowerCase();
-    return same ? status : '$status · $message';
+    if (message.isEmpty) return status;
+    // The host's message usually already starts with the status word ("Готово: …"):
+    // show the message alone then, capitalised as the host wrote it.
+    final lower = message.toLowerCase();
+    if (lower.startsWith(status.toLowerCase()) || lower.startsWith('${j['status']}'.toLowerCase())) return message;
+    return '$status · $message';
   }
 
   @override

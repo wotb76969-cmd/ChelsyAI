@@ -42,8 +42,8 @@ class MessageView extends StatelessWidget {
       // Code is data: monospace, snow on the deepest night (contrast 16:1). The colour is explicit:
       // without it flutter_markdown_plus falls back to a dark default on this ground. No span
       // background: per-line text backgrounds draw ragged boxes; the block decoration carries it.
-      // 'monospace' resolves to the system mono face on Android (Droid Sans Mono / Noto Sans Mono).
-      code: const TextStyle(fontFamily: 'monospace', fontSize: 13.5, height: 1.5, color: ChelsyColors.text),
+      // Bundled JetBrains Mono (ChelsyMono), with the system mono face as fallback.
+      code: const TextStyle(fontFamily: 'ChelsyMono', fontFamilyFallback: ['monospace'], fontSize: 13.5, height: 1.5, color: ChelsyColors.text),
       codeblockDecoration: BoxDecoration(
         color: ChelsyColors.codeBg,
         borderRadius: BorderRadius.circular(12),
