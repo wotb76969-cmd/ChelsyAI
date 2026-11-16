@@ -58,6 +58,13 @@ class ClientGuiSmoke(unittest.TestCase):
                 app._set_status(state, state)
                 app.root.update()
             self.assertIsNone(app.aurora._job)          # still when Chelsy is idle
+            # The user's turn is a right-side bubble that follows the chat width.
+            class E: width = 1000
+            app._fit_turns(E())
+            self.assertEqual(int(app.chat.tag_cget('user', 'lmargin1')), 380)
+            app.messages = [{'role': 'assistant', 'content': 'Привет'}]
+            app.render()
+            self.assertTrue(app.chat.image_names() or app.chat_avatar is None)
             app.root.update()
         finally:
             app.root.destroy()

@@ -531,6 +531,10 @@ class ChelsyClientApp:
         self.chat.pack(side='left', fill='both', expand=True)
         self.chat.tag_configure('user', background=USER_BUBBLE, lmargin1=160, lmargin2=160, rmargin=8,
                                 spacing1=10, spacing3=10, justify='right')
+        try:  # Tk 8.6.6+: keep the margins night-coloured so the bubble is only as wide as its column
+            self.chat.tag_configure('user', lmargincolor=BG, rmargincolor=BG)
+        except Exception:  # noqa: BLE001 — older Tk: the bubble spans the full line, still readable
+            pass
         self.chat.tag_configure('author', foreground=LAVENDER, font=('Segoe UI Semibold', 10), spacing1=16)
         self.chat.tag_configure('author_user', foreground=MUTED, font=('Segoe UI Semibold', 10), spacing1=16,
                                 justify='right', rmargin=8)
@@ -544,6 +548,13 @@ class ChelsyClientApp:
         self.chat.tag_configure('date', foreground=TEAL)
         self.chat.tag_configure('muted', foreground=MUTED, font=('Segoe UI', 9, 'italic'))
         self.chat.tag_configure('rule', foreground=STROKE)
+        self.chat.bind('<Configure>', self._fit_turns, add='+')
+        self.chat_avatar = None
+        try:
+            from tkinter import PhotoImage
+            self.chat_avatar = PhotoImage(file=str(asset('chelsy_logo_small.png'))).subsample(8, 8)
+        except Exception:  # noqa: BLE001 — a missing image must never block the chat
+            self.chat_avatar = None
         self.chat.tag_bind('link', '<Button-1>', self._click_link)
         self.chat.tag_bind('link', '<Enter>', lambda e: self.chat.configure(cursor='hand2'))
         self.chat.tag_bind('link', '<Leave>', lambda e: self.chat.configure(cursor=''))
@@ -650,13 +661,30 @@ class ChelsyClientApp:
                 self.chat.insert(END, 'Ты\n', 'author_user')
                 self.chat.insert(END, m['content'] + '\n', 'user')
             else:
-                self.chat.insert(END, 'Chelsy\n', 'author')
+                self._chelsy_author()
                 self._insert_markdown(m['content'])
         if streaming_text is not None:
-            self.chat.insert(END, 'Chelsy\n', 'author')
+            self._chelsy_author()
             self._insert_markdown(streaming_text + ' ▍')
         self.chat.configure(state='disabled')
         self.chat.see(END)
+
+    def _chelsy_author(self):
+        """Chelsy's turn starts with her logo avatar, then the name."""
+        if self.chat_avatar is not None:
+            start = self.chat.index('end-1c')
+            self.chat.image_create(END, image=self.chat_avatar, padx=0, align='center')
+            self.chat.insert(END, '  Chelsy\n', 'author')
+            self.chat.tag_add('author', start, 'end-1c')  # the avatar line keeps the turn spacing
+        else:
+            self.chat.insert(END, 'Chelsy\n', 'author')
+
+    def _fit_turns(self, event=None):
+        """The user's turn is a right-side bubble: it starts at ~38% of the chat width."""
+        width = self.chat.winfo_width() if event is None else event.width
+        if width > 1:
+            margin = max(48, int(width * 0.38))
+            self.chat.tag_configure('user', lmargin1=margin, lmargin2=margin)
 
     def _click_link(self, event):
         index = self.chat.index(f'@{event.x},{event.y}')
@@ -878,7 +906,6 @@ class ChelsyClientApp:
             return
         win = Toplevel(self.root, bg=BG)
         win.title('Исследования — Chelsy AI')
-        win.geometry('980x640')
         top = ttk.Frame(win, padding=10)
         top.pack(fill='x')
         topic = StringVar()
@@ -895,9 +922,10 @@ class ChelsyClientApp:
         for col, title, width in (('status', 'Статус', 90), ('trust', 'Доверие', 60), ('date', 'Дата', 90), ('title', 'Заголовок', 330), ('url', 'Ссылка', 330)):
             items.heading(col, text=title)
             items.column(col, width=width)
-        items.pack(fill='both', expand=True, padx=10)
+        # The action row is packed at the bottom before the list expands, so it is never clipped.
         actions = ttk.Frame(win, padding=10)
-        actions.pack(fill='x')
+        actions.pack(side='bottom', fill='x')
+        items.pack(fill='both', expand=True, padx=10)
 
         def refresh_jobs():
             def job():
@@ -957,13 +985,19 @@ class ChelsyClientApp:
                 win.after(800, refresh_jobs)
         ttk.Button(top, text='Начать', style='Accent.TButton', command=start).pack(side='left')
         ttk.Button(top, text='Остановить', command=stop_job).pack(side='left', padx=4)
-        ttk.Button(top, text='↻', command=refresh_jobs).pack(side='left')
+        ttk.Button(top, text='Обновить', style='Flat.TButton', command=refresh_jobs).pack(side='left')
         ttk.Button(actions, text='В личную базу', style='Accent.TButton', command=lambda: review('accept')).pack(side='left')
         ttk.Button(actions, text='В общую базу (владелец)', command=lambda: review('accept', 'shared')).pack(side='left', padx=6)
         ttk.Button(actions, text='Отклонить', command=lambda: review('reject')).pack(side='left')
         ttk.Button(actions, text='Открыть ссылку', command=lambda: [webbrowser.open(items.item(i)['values'][4]) for i in items.selection()[:1]
                                                                     if str(items.item(i)['values'][4]).startswith('https://')]).pack(side='right')
         jobs.bind('<<TreeviewSelect>>', show_items)
+        # Size from what the widgets ask for, so no button row is cut off at any DPI.
+        win.update_idletasks()
+        need_w = max(980, top.winfo_reqwidth() + 20, actions.winfo_reqwidth() + 20)
+        need_h = max(640, win.winfo_reqheight())
+        win.geometry(f'{need_w}x{need_h}')
+        win.minsize(min(need_w, actions.winfo_reqwidth() + 20), top.winfo_reqheight() + actions.winfo_reqheight() + 260)
 
         def tick():
             if win.winfo_exists():

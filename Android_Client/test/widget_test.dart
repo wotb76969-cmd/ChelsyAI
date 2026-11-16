@@ -124,4 +124,41 @@ void main() {
     expect(sheet.code?.color, ChelsyColors.text);
     expect((sheet.codeblockDecoration as BoxDecoration).color, ChelsyColors.codeBg);
   });
+
+  test('code style has no ragged span background', () {
+    expect(MessageView.markdownStyle().code?.backgroundColor, isNull);
+  });
+
+  test('sources footer is split into groups with dates', () {
+    const answer = 'Ответ.\n\n---\n**Источники из интернета:**\n'
+        '1. [FastAPI 0.120](https://fastapi.tiangolo.com/release-notes/) · 2026-11-12\n'
+        '**Из базы знаний:**\n1. [Учебник](https://docs.python.org/3/tutorial/) (личная)';
+    final (body, groups) = MessageView.splitSources(answer);
+    expect(body, 'Ответ.');
+    expect(groups.map((g) => g.title), ['Источники из интернета', 'Из базы знаний']);
+    expect(groups.first.items.single.date, '2026-11-12');
+    expect(groups.last.items.single.date, isNull);
+    expect(groups.last.items.single.note, '(личная)');
+    // A plain horizontal rule in an answer is left alone.
+    final (keep, none) = MessageView.splitSources('A\n\n---\nB');
+    expect(keep, 'A\n\n---\nB');
+    expect(none, isEmpty);
+  });
+
+  testWidgets('answer with sources shows turquoise dates', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: chelsyTheme(),
+      home: Scaffold(
+        body: MessageView(
+            message: ChatMessage.fromJson(const {
+          'role': 'assistant',
+          'content': 'Ответ.\n\n---\n**Источники из интернета:**\n1. [FastAPI](https://fastapi.tiangolo.com/) · 2026-11-12',
+        })),
+      ),
+    ));
+    final date = tester.widget<Text>(find.byKey(const ValueKey('source-date')));
+    expect(date.data, '2026-11-12');
+    expect(date.style?.color, ChelsyColors.teal);
+    expect(find.text('Источники из интернета'), findsOneWidget);
+  });
 }

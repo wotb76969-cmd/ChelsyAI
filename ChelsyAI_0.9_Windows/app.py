@@ -8,6 +8,7 @@ model/server status (Chelsy Pulse). Composer: multiline input, attachments
 """
 import base64
 import html
+import re
 import sys
 import threading
 from pathlib import Path
@@ -140,7 +141,17 @@ def to_chatbot(username, conversation_id):
     if not conversation_id:
         return [], []
     msgs = core.conversation_messages(username, conversation_id)
-    return [{'role': m['role'], 'content': m['content']} for m in msgs], [m['id'] for m in msgs]
+    return ([{'role': m['role'], 'content': display_text(m['content']) if m['role'] == 'assistant' else m['content']}
+             for m in msgs], [m['id'] for m in msgs])
+
+
+SOURCE_DATE = re.compile(r'^(\d+\. \[[^\]\n]*\]\([^)\s]+\)) · (\d{4}-\d{2}-\d{2})', re.M)
+
+
+def display_text(text):
+    """Display-only: dates in the sources footer become turquoise tabular numerals.
+    The stored message is untouched."""
+    return SOURCE_DATE.sub(r'\1 · <span class="chelsy-date">\2</span>', text or '')
 
 
 def title_html(username, conversation_id):
@@ -201,7 +212,7 @@ def _run(username, conversation_id, question, model, web, request, attachments=N
                 messages[-1]['content'] = answer + ' ▍'
                 yield messages, ids, pulse_html('generating')
             elif event['type'] in ('replace', 'done'):
-                messages[-1]['content'] = event['text']
+                messages[-1]['content'] = display_text(event['text'])
                 answer = event['text']
         if notes:
             messages[-1]['content'] += '\n\n' + '\n'.join('⚠️ ' + n for n in notes)
@@ -736,8 +747,19 @@ footer { display:none !important; }
 .chelsy-profile .logout:hover { color:var(--chelsy-text); }
 /* main */
 #chelsy-main { padding:12px clamp(10px, 3vw, 42px) 10px !important; max-width:1080px; margin:0 auto; width:100%; }
-#chelsy-topbar { align-items:center; gap:8px; padding-bottom:6px; }
-.chelsy-conv-title { font-weight:600; font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#chelsy-topbar { align-items:center; gap:8px; padding-bottom:6px; flex-wrap:nowrap !important; }
+#chelsy-topbar > * { min-width:0 !important; }
+#chelsy-pulse-box { overflow:hidden; }
+#chelsy-pulse-box .chelsy-pulse-row { overflow:hidden; }
+#chelsy-pulse-box .pulse-meta { overflow:hidden; text-overflow:ellipsis; }
+/* tables: dates and statuses never break mid-value */
+.chelsy-kb-table td:nth-child(4), .chelsy-kb-table td:nth-child(5), .chelsy-kb-table td:nth-child(6),
+.chelsy-items-table td:nth-child(2), .chelsy-items-table td:nth-child(3), .chelsy-items-table td:nth-child(4),
+.chelsy-jobs-table td:nth-child(3), .chelsy-jobs-table td:nth-child(6) { white-space:nowrap !important;
+  font-variant-numeric:tabular-nums; }
+.chelsy-kb-table td:nth-child(4), .chelsy-kb-table td:nth-child(5), .chelsy-items-table td:nth-child(4),
+.chelsy-jobs-table td:nth-child(6) { color:var(--chelsy-teal) !important; }
+.chelsy-conv-title { padding-right:10px; font-weight:600; font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .chelsy-conv-title .fav { font-size:12px; font-weight:500; color:var(--chelsy-lavender); margin-left:8px; }
 button.chelsy-flat, .chelsy-flat button { background:transparent !important; border:0 !important; box-shadow:none !important;
   color:var(--chelsy-lavender) !important; font-weight:500 !important; }
@@ -747,23 +769,39 @@ button.chelsy-flat:hover, .chelsy-flat button:hover { background:var(--chelsy-pa
 #chelsy-chat .message-row.user-row .message, #chelsy-chat .user { background:#231d4f !important; border:0 !important;
   border-radius:20px 20px 6px 20px !important; }
 #chelsy-chat .message-row.bot-row .message, #chelsy-chat .bot { background:transparent !important; border:0 !important; }
-#chelsy-chat pre, #chelsy-chat .code_wrap pre { border:1px solid var(--chelsy-stroke); border-radius:12px; background:#0E1029 !important; color:var(--chelsy-text) !important; }
-#chelsy-chat code { background:var(--chelsy-raised); color:var(--chelsy-text); border-radius:5px; }
+#chelsy-chat pre, #chelsy-chat .code_wrap pre { border:1px solid var(--chelsy-stroke); border-radius:12px; background:#0E1029 !important;
+  color:var(--chelsy-text) !important; max-width:100%; overflow-x:auto; }
+#chelsy-chat pre code { background:transparent !important; color:var(--chelsy-text) !important; padding:0; }
+#chelsy-chat :not(pre) > code { background:var(--chelsy-raised); color:var(--chelsy-text); border-radius:5px; padding:1px 5px; }
+/* code tokens: snow / lavender / turquoise only, all >= 7:1 on #0E1029 */
+#chelsy-chat pre .token, #chelsy-chat pre [class*="hljs-"] { color:var(--chelsy-text) !important; background:none !important; }
+#chelsy-chat pre .token.keyword, #chelsy-chat pre .token.builtin, #chelsy-chat pre .token.function,
+#chelsy-chat pre .hljs-keyword, #chelsy-chat pre .hljs-built_in, #chelsy-chat pre .hljs-title { color:#A78BFA !important; }
+#chelsy-chat pre .token.string, #chelsy-chat pre .token.number, #chelsy-chat pre .token.boolean,
+#chelsy-chat pre .hljs-string, #chelsy-chat pre .hljs-number, #chelsy-chat pre .hljs-literal { color:#21D9DA !important; }
+#chelsy-chat pre .token.comment, #chelsy-chat pre .hljs-comment { color:var(--chelsy-muted) !important; font-style:italic; }
+#chelsy-chat pre .token.punctuation, #chelsy-chat pre .token.operator { color:#C9C8E6 !important; }
+/* sources footer of an answer */
+#chelsy-chat hr { border:0; border-top:1px solid var(--chelsy-stroke); margin:14px 0 8px; }
+#chelsy-chat .chelsy-date { white-space:nowrap; }
 #chelsy-chat a { color:var(--chelsy-lavender); text-underline-offset:3px; }
 #chelsy-chat a:hover { color:var(--chelsy-teal); }
 /* composer + the aurora horizon (signature move) */
 #chelsy-compose { position:relative; border:1px solid var(--chelsy-stroke) !important; border-radius:20px !important;
   background:var(--chelsy-panel-2) !important; box-shadow:0 10px 30px -12px #00000099 !important; overflow:hidden; }
-#chelsy-compose::before { content:''; position:absolute; left:0; right:0; top:0; height:3px; z-index:2;
-  background:var(--chelsy-aurora); background-size:200% 100%; opacity:.4; transition:opacity .2s ease-out; }
+/* Intensity is baked into the colours (alpha hex) instead of opacity, so the rest state
+   and the active states never depend on custom properties or cascade order. */
+#chelsy-compose::before { content:''; position:absolute; left:0; right:0; top:0; height:3px; z-index:2; opacity:1 !important;
+  background:linear-gradient(90deg,#6D4AFF66,#A78BFA66 50%,#21D9DA66) !important; background-size:100% 100% !important; animation:none; }
 #chelsy-compose:focus-within { border-color:#3D3680 !important; }
-body:has(.pulse-generating) #chelsy-compose::before, body:has(.pulse-checking) #chelsy-compose::before {
-  opacity:1; background-image:linear-gradient(90deg,#6D4AFF,#A78BFA,#21D9DA,#A78BFA,#6D4AFF); animation:chelsy-drift 2.4s linear infinite; }
-body:has(.pulse-searching) #chelsy-compose::before { opacity:1;
-  background:linear-gradient(90deg,#21D9DA26 0%,#21D9DA 50%,#21D9DA26 100%); background-size:50% 100%; background-repeat:no-repeat;
-  background-color:#21D9DA26; animation:chelsy-sweep 1.6s ease-in-out infinite; }
-body:has(.pulse-syncing) #chelsy-compose::before { background:var(--chelsy-lavender); animation:chelsy-breathe 1.6s ease-in-out infinite; }
-body:has(.pulse-offline) #chelsy-compose::before { background:var(--chelsy-danger); opacity:.85; animation:none; }
+body:has(.pulse-generating) #chelsy-compose#chelsy-compose::before, body:has(.pulse-checking) #chelsy-compose#chelsy-compose::before {
+  background:linear-gradient(90deg,#6D4AFF,#A78BFA,#21D9DA,#A78BFA,#6D4AFF) !important; background-size:200% 100% !important;
+  animation:chelsy-drift 2.4s linear infinite; }
+body:has(.pulse-searching) #chelsy-compose#chelsy-compose::before {
+  background:linear-gradient(90deg,#21D9DA00 0%,#21D9DA 50%,#21D9DA00 100%) no-repeat, #21D9DA26 !important;
+  background-size:50% 100%, 100% 100% !important; animation:chelsy-sweep 1.6s ease-in-out infinite; }
+body:has(.pulse-syncing) #chelsy-compose#chelsy-compose::before { background:#A78BFA !important; animation:chelsy-breathe 1.6s ease-in-out infinite; }
+body:has(.pulse-offline) #chelsy-compose#chelsy-compose::before { background:#FF8A65D9 !important; animation:none; }
 @keyframes chelsy-drift { to { background-position:-200% 0; } }
 @keyframes chelsy-sweep { 0% { background-position:-60% 0; } 100% { background-position:160% 0; } }
 #chelsy-compose textarea { font-size:15.5px !important; line-height:1.5 !important; }
@@ -809,8 +847,19 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
   #chelsy-topbar > div:first-child { min-width:0 !important; }
   .chelsy-journal li { grid-template-columns:1fr; gap:2px; }
 }
+@media (max-width: 480px) {
+  #chelsy-topbar button.chelsy-flat:last-child, #chelsy-topbar .chelsy-flat:last-child { display:none !important; }
+  #chelsy-topbar > div:first-child { flex:1 1 auto !important; }
+  #chelsy-chat .avatar-container { display:none !important; }
+  #chelsy-topbar .chelsy-flat, #chelsy-topbar button.chelsy-flat { white-space:nowrap !important; min-width:0 !important; padding:4px 6px !important; }
+  #chelsy-chat .message-row.bot-row, #chelsy-chat .message-row.bot-row .message, #chelsy-chat .bot-row .flex-wrap { max-width:100% !important; width:100% !important; }
+  #chelsy-chat .message-row { padding-left:0 !important; margin-left:0 !important; }
+  #chelsy-chat .bot-row .message-wrap, #chelsy-chat .message-row.bot-row { gap:0 !important; }
+}
 @media (prefers-reduced-motion: reduce) {
   .chelsy-pulse::after, .chelsy-pulse i, .chelsy-progress div, #chelsy-compose::before { animation:none !important; transition:none !important; }
+  /* same specificity as the active-state rules and later in the sheet, so motion stays off */
+  body:has(.chelsy-pulse) #chelsy-compose#chelsy-compose::before { animation:none !important; }
 }
 '''
 
@@ -886,17 +935,18 @@ def build():
                 with gr.Row():
                     scope = gr.Radio(['Личная база', 'Общая база'], value='Личная база', label='Куда добавлять', scale=2)
                     auto = gr.Checkbox(label='Добавлять без проверки', value=False, scale=1)
-                    start_btn = gr.Button('▶ Начать исследование', variant='primary', scale=1)
+                    start_btn = gr.Button('Начать исследование', variant='primary', scale=1)
                 research_msg = gr.Markdown()
                 jobs_table = gr.Dataframe(headers=['ID', 'Тема', 'Статус', 'Прогресс', 'Сообщение', 'Создано'],
-                                          interactive=False, wrap=True, label='Задачи')
+                                          interactive=False, wrap=True, label='Задачи', elem_classes='chelsy-jobs-table')
                 with gr.Row():
                     job_pick = gr.Dropdown(choices=[], label='Открыть исследование', scale=3)
                     stop_job_btn = gr.Button('Остановить', scale=1)
                     refresh_jobs = gr.Button('Обновить', scale=1)
                 job_head = gr.HTML()
                 items_table = gr.Dataframe(headers=['#', 'Статус', 'Доверие', 'Дата', 'Заголовок', 'Ссылка', 'Проверка'],
-                                           interactive=False, wrap=True, label='Найденные материалы')
+                                           interactive=False, wrap=True, label='Найденные материалы',
+                                           elem_classes='chelsy-items-table')
                 item_pick = gr.CheckboxGroup(choices=[], label='Выбери материалы для решения')
                 with gr.Row():
                     accept_personal = gr.Button('В личную базу', variant='primary')
@@ -940,7 +990,7 @@ def build():
                     kb_refresh = gr.Button('Показать', scale=1)
                 kb_summary = gr.Markdown()
                 kb_table = gr.Dataframe(headers=['ID', 'База', 'Заголовок', 'Опубликовано', 'Получено', 'Доверие', 'Версия', 'Ссылка'],
-                                        interactive=False, wrap=True)
+                                        interactive=False, wrap=True, elem_classes='chelsy-kb-table')
                 with gr.Row():
                     kb_search = gr.Textbox(label='Проверить поиск по базе', placeholder='О чём спросить базу?', scale=4)
                     kb_search_btn = gr.Button('Найти', scale=1)

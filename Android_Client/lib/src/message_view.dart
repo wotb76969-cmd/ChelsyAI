@@ -40,9 +40,10 @@ class MessageView extends StatelessWidget {
       codeblockPadding: const EdgeInsets.all(12),
 
       // Code is data: monospace, snow on the deepest night (contrast 16:1). The colour is explicit:
-      // without it flutter_markdown_plus falls back to a dark default on this ground.
-      code: const TextStyle(
-          fontFamily: 'monospace', fontSize: 13.5, height: 1.5, color: ChelsyColors.text, backgroundColor: ChelsyColors.raised),
+      // without it flutter_markdown_plus falls back to a dark default on this ground. No span
+      // background: per-line text backgrounds draw ragged boxes; the block decoration carries it.
+      // 'monospace' resolves to the system mono face on Android (Droid Sans Mono / Noto Sans Mono).
+      code: const TextStyle(fontFamily: 'monospace', fontSize: 13.5, height: 1.5, color: ChelsyColors.text),
       codeblockDecoration: BoxDecoration(
         color: ChelsyColors.codeBg,
         borderRadius: BorderRadius.circular(12),
@@ -55,6 +56,34 @@ class MessageView extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
     );
+  }
+
+  static final _sourceLine = RegExp(r'^\d+\.\s+\[([^\]]*)\]\(([^)\s]+)\)(?:\s+·\s+(\d{4}-\d{2}-\d{2}))?(.*)$');
+  static final _sourceHead = RegExp(r'^\*\*(.+?)\*\*$');
+
+  /// Splits the engine's sources footer (`---` + "**Источники из интернета:**" lines)
+  /// from the answer body. Returns the body and the parsed groups (public for tests).
+  /// Anything that does not look exactly like the footer is left as Markdown.
+  static (String, List<SourceGroup>) splitSources(String content) {
+    const marker = '\n\n---\n';
+    final cut = content.lastIndexOf(marker);
+    if (cut < 0) return (content, const []);
+    final groups = <SourceGroup>[];
+    for (final raw in content.substring(cut + marker.length).split('\n')) {
+      final line = raw.trim();
+      if (line.isEmpty) continue;
+      final head = _sourceHead.firstMatch(line);
+      if (head != null) {
+        groups.add(SourceGroup(head.group(1)!.replaceAll(RegExp(r':$'), ''), []));
+        continue;
+      }
+      final m = _sourceLine.firstMatch(line);
+      if (m == null || groups.isEmpty) return (content, const []);
+      final title = m.group(1)!.trim();
+      groups.last.items.add(SourceItem(title.isEmpty ? m.group(2)! : title, m.group(2)!, m.group(3), m.group(4)!.trim()));
+    }
+    if (groups.every((g) => g.items.isEmpty)) return (content, const []);
+    return (content.substring(0, cut), groups);
   }
 
   Future<void> _openLink(BuildContext context, String? href) async {
@@ -92,6 +121,7 @@ class MessageView extends StatelessWidget {
       );
     }
     final style = markdownStyle();
+    final (body, sources) = message.pending ? (message.content, const <SourceGroup>[]) : splitSources(message.content);
     return Align(
       alignment: Alignment.centerLeft,
       child: ConstrainedBox(
@@ -107,11 +137,12 @@ class MessageView extends StatelessWidget {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 MarkdownBody(
-                  data: message.content.isEmpty ? '…' : message.content,
+                  data: body.isEmpty ? '…' : body,
                   selectable: true,
                   styleSheet: style,
                   onTapLink: (text, href, title) => _openLink(context, href),
                 ),
+                if (sources.isNotEmpty) _Sources(groups: sources, onOpen: (href) => _openLink(context, href)),
                 if (!message.pending)
                   Row(children: [
                     _Action(icon: Icons.copy_rounded, label: 'Копировать', onTap: () {
@@ -135,6 +166,85 @@ class MessageView extends StatelessWidget {
           ]),
         ),
       ),
+    );
+  }
+}
+
+class SourceItem {
+  const SourceItem(this.title, this.url, this.date, this.note);
+  final String title;
+  final String url;
+  final String? date;
+  final String note;
+}
+
+class SourceGroup {
+  SourceGroup(this.title, this.items);
+  final String title;
+  final List<SourceItem> items;
+}
+
+/// Sources under an answer: lavender titles, turquoise tabular dates, one quiet rule above.
+class _Sources extends StatelessWidget {
+  const _Sources({required this.groups, required this.onOpen});
+  final List<SourceGroup> groups;
+  final void Function(String href) onOpen;
+
+  static const _tabular = [FontFeature.tabularFigures()];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.only(top: 8),
+      decoration: const BoxDecoration(border: Border(top: BorderSide(color: ChelsyColors.stroke))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        for (final g in groups) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 6, bottom: 2),
+            child: Text(g.title, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: ChelsyColors.muted)),
+          ),
+          for (final (i, item) in g.items.indexed)
+            InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => onOpen(item.url),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 44),
+                child: Row(children: [
+                  SizedBox(
+                    width: 24,
+                    child: Text('${i + 1}.',
+                        style: const TextStyle(fontSize: 13.5, color: ChelsyColors.muted, fontFeatures: _tabular)),
+                  ),
+                  Expanded(
+                    child: Text.rich(
+                      TextSpan(children: [
+                        TextSpan(
+                            text: item.title,
+                            style: const TextStyle(
+                                color: ChelsyColors.lavender,
+                                decoration: TextDecoration.underline,
+                                decorationColor: ChelsyColors.lavender)),
+                        if (item.note.isNotEmpty)
+                          TextSpan(text: ' ${item.note}', style: const TextStyle(color: ChelsyColors.muted)),
+                      ]),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 14, height: 1.4),
+                    ),
+                  ),
+                  if (item.date != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 10),
+                      child: Text(item.date!,
+                          key: const ValueKey('source-date'),
+                          style: const TextStyle(fontSize: 13, color: ChelsyColors.teal, fontFeatures: _tabular)),
+                    ),
+                ]),
+              ),
+            ),
+        ],
+      ]),
     );
   }
 }

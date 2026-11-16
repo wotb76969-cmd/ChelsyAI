@@ -50,6 +50,17 @@ class _ResearchScreenState extends State<ResearchScreen> {
     'skipped': 'пропущено',
   };
 
+  /// Status, then the job message only when it adds something (the host often
+  /// repeats the status word as the message).
+  static String jobLine(Map<String, dynamic> j) {
+    final status = _status[j['status']] ?? '${j['status'] ?? ''}';
+    final message = ((j['message'] ?? '') as String).trim();
+    final same = message.isEmpty ||
+        message.toLowerCase() == status.toLowerCase() ||
+        message.toLowerCase() == '${j['status']}'.toLowerCase();
+    return same ? status : '$status · $message';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -140,7 +151,7 @@ class _ResearchScreenState extends State<ResearchScreen> {
                     const SizedBox(height: 4),
                     LinearProgressIndicator(value: ((j['progress'] ?? 0) as num).toDouble(), color: ChelsyColors.teal),
                     const SizedBox(height: 4),
-                    Text('${_status[j['status']] ?? j['status']} · ${j['message'] ?? ''}', style: const TextStyle(fontSize: 12)),
+                    Text(jobLine(j), style: const TextStyle(fontSize: 12, color: ChelsyColors.muted)),
                   ]),
                   trailing: (j['status'] == 'running' || j['status'] == 'queued')
                       ? IconButton(
@@ -170,8 +181,13 @@ class _ResearchScreenState extends State<ResearchScreen> {
                   leading: Icon((_learnIcon[e['event']] ?? (Icons.circle_outlined, ChelsyColors.muted)).$1,
                       color: (_learnIcon[e['event']] ?? (Icons.circle_outlined, ChelsyColors.muted)).$2),
                   title: Text((e['title'] ?? '') as String, maxLines: 2, overflow: TextOverflow.ellipsis),
-                  subtitle: Text(
-                      '${((e['created'] ?? '') as String).replaceFirst('T', ' ').padRight(16).substring(0, 16)} · ${e['detail'] ?? ''}',
+                  subtitle: Text.rich(
+                      TextSpan(children: [
+                        TextSpan(
+                            text: ((e['created'] ?? '') as String).replaceFirst('T', ' ').padRight(16).substring(0, 16).trim(),
+                            style: const TextStyle(color: ChelsyColors.teal, fontFeatures: [FontFeature.tabularFigures()])),
+                        if (((e['detail'] ?? '') as String).isNotEmpty) TextSpan(text: ' · ${e['detail']}'),
+                      ]),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 12, color: ChelsyColors.muted)),
@@ -187,10 +203,19 @@ class _ResearchScreenState extends State<ResearchScreen> {
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text((i['title'] ?? i['url']) as String, style: const TextStyle(fontWeight: FontWeight.w600)),
                       const SizedBox(height: 4),
-                      Text(
-                          '${_status[i['status']] ?? i['status']} · доверие ${((i['trust'] ?? 0) as num).toStringAsFixed(2)}'
-                          ' · ${((i['published'] ?? '') as String).isEmpty ? 'дата неизвестна' : (i['published'] as String).substring(0, 10)}',
-                          style: const TextStyle(fontSize: 12, color: ChelsyColors.muted)),
+                      Text.rich(
+                          TextSpan(children: [
+                            TextSpan(
+                                text: '${_status[i['status']] ?? i['status']} · доверие '
+                                    '${((i['trust'] ?? 0) as num).toStringAsFixed(2)} · '),
+                            ((i['published'] ?? '') as String).length >= 10
+                                ? TextSpan(
+                                    text: (i['published'] as String).substring(0, 10),
+                                    style: const TextStyle(color: ChelsyColors.teal))
+                                : const TextSpan(text: 'дата неизвестна'),
+                          ]),
+                          style: const TextStyle(
+                              fontSize: 12, color: ChelsyColors.muted, fontFeatures: [FontFeature.tabularFigures()])),
                       if (((i['note'] ?? '') as String).isNotEmpty)
                         Text(i['note'] as String, style: const TextStyle(fontSize: 12, color: ChelsyColors.muted)),
                       Row(children: [
