@@ -34,6 +34,7 @@ Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
 [Files]
 Source: "dist\ChelsyAI\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "dist\ChelsyHost\*"; DestDir: "{app}\Host"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "dist\ChelsyAdmin\*"; DestDir: "{app}\Admin"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "dist\ChelsyClient\*"; DestDir: "{app}\Client"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "dist\ChelsyConfig\*"; DestDir: "{app}\Config"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "dist\ChelsyDB\*"; DestDir: "{app}\Database"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -44,6 +45,7 @@ Source: "..\Установка.md"; DestDir: "{app}"; Flags: ignoreversion
 [Icons]
 Name: "{autoprograms}\Chelsy AI"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autoprograms}\Chelsy AI Host (сервер для устройств)"; Filename: "{app}\Host\ChelsyHost.exe"
+Name: "{autoprograms}\Chelsy AI — администрирование"; Filename: "{app}\Admin\ChelsyAdmin.exe"
 Name: "{autoprograms}\Chelsy AI Host — проверка готовности"; Filename: "{app}\Host\ChelsyHost.exe"; Parameters: "--doctor"
 Name: "{autoprograms}\Chelsy AI Host — включить доступ с устройств (Tailscale)"; Filename: "{app}\Host\ChelsyHost.exe"; Parameters: "--setup-tailscale"
 Name: "{userstartup}\Chelsy AI Host"; Filename: "{app}\Host\ChelsyHost.exe"; Flags: runminimized; Tasks: hostautostart

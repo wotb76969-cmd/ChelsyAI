@@ -138,6 +138,15 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(401, {'error': 'Invalid credentials', 'message': 'Требуется вход. Сессия истекла или неверна.'})
         return name
 
+    def device(self):
+        """Coarse client type for the activity log (no fingerprinting)."""
+        agent = (self.headers.get('User-Agent') or '').lower()
+        if 'dart' in agent or 'android' in agent:
+            return 'android'
+        if 'python' in agent or 'chelsyclient' in agent:
+            return 'windows'
+        return 'other'
+
     def token(self):
         header = self.headers.get('Authorization', '')
         return header[7:].strip() if header.startswith('Bearer ') else None
@@ -329,6 +338,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/v2/memory':
             return self.reply(200, {'memory': personal_facts(username)})
         if path == '/api/v2/sync':
+            if username.startswith('sb:'):
+                import admin_service
+                admin_service.record_activity(username[3:], 'sync', '', self.device())
             return self.legacy_get('/api/sync', username)
         from knowledge import services
         kb = services()
@@ -411,6 +423,9 @@ class Handler(BaseHTTPRequestHandler):
         kb = services()
         try:
             if path == '/api/v2/research':
+                if username.startswith('sb:'):
+                    import admin_service
+                    admin_service.record_activity(username[3:], 'research', '', self.device())
                 scope = 'shared' if body.get('scope') == 'shared' else username
                 job = kb['scheduler'].submit(username, str(body.get('topic', '')), target_scope=scope,
                                              max_pages=int(body.get('max_pages', 8)), is_owner=is_owner(username),
@@ -472,6 +487,13 @@ class Handler(BaseHTTPRequestHandler):
                 isinstance(a, dict) and isinstance(a.get('name', ''), str) and isinstance(a.get('text', ''), str)
                 for a in attachments):
             return self.reply(400, {'error': 'Invalid attachments'})
+        if username.startswith('sb:'):
+            import admin_service
+            refusal = admin_service.daily_limit_message(username[3:], self.token())
+            if refusal:
+                return self.reply(429, {'error': 'Plan limit', 'message': refusal})
+            admin_service.record_activity(username[3:], 'chat', f'{len(message)} симв.' + (
+                f', файлов: {len(attachments)}' if attachments else ''), self.device())
         if cid and not core.owns_conversation(username, cid):
             return self.reply(404, {'error': 'Conversation not found'})
         cid = cid or core.create_conversation(username)

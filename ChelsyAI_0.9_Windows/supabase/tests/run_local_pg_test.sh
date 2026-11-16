@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Applies 001 -> 003 to a THROWAWAY local PostgreSQL database, checks RLS isolation,
+# Applies 001 -> 004 to a THROWAWAY local PostgreSQL database, checks RLS isolation,
 # re-applies 003 (idempotency), rolls it back and applies it again.
 # Usage: PGHOST=... PGPORT=... PGUSER=postgres ./run_local_pg_test.sh   (never point it at production)
 set -euo pipefail
@@ -17,4 +17,11 @@ run rls_isolation_test.sql
 run ../003_rollback.sql
 psql -v ON_ERROR_STOP=1 -q -d "$DB" -c "select count(*) as messages_kept_after_rollback from public.chelsy_ai_messages"
 run ../003_conversations_soft_delete.sql
+# 004: admin tables — apply twice (idempotent), check client isolation, roll back, re-apply
+run ../004_admin_subscriptions_activity.sql
+run ../004_admin_subscriptions_activity.sql
+run admin_rls_test.sql
+run ../004_rollback.sql
+psql -v ON_ERROR_STOP=1 -q -d "$DB" -c "select count(*) as users_kept_after_004_rollback from auth.users"
+run ../004_admin_subscriptions_activity.sql
 echo "Supabase migration test: OK"

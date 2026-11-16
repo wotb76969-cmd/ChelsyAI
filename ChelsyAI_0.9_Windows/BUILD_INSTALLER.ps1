@@ -73,6 +73,10 @@ try {
         --add-data "assets;assets" --collect-all gradio --collect-all gradio_client --collect-all safehttpx `
         --collect-all huggingface_hub --collect-all groovy --collect-all orjson launcher.py }
     Invoke-Checked 'Host build' { & $python -m PyInstaller @common --console --name ChelsyHost --icon assets\chelsy.ico host_server.py }
+    Invoke-Checked 'Admin panel build' { & $python -m PyInstaller @common --windowed --name ChelsyAdmin --icon assets\chelsy.ico `
+        --add-data "assets;assets" --add-data "site_supabase_public.json;." --add-data "supabase\004_admin_subscriptions_activity.sql;supabase" `
+        --collect-all gradio --collect-all gradio_client --collect-all safehttpx `
+        --collect-all huggingface_hub --collect-all groovy --collect-all orjson admin_app.py }
     Invoke-Checked 'Client build' { & $python -m PyInstaller --noconfirm --clean --onedir --version-file version_info.txt --windowed `
         --name ChelsyClient --icon assets\chelsy.ico --add-data "assets;assets" --add-data "site_supabase_public.json;." `
         --exclude-module gradio --exclude-module numpy --exclude-module pandas client.py }
@@ -82,7 +86,7 @@ try {
     Invoke-Checked 'Migration tool build' { & $python -m PyInstaller --noconfirm --clean --onedir --console --name ChelsyMigrate migrate_local.py }
     Invoke-Checked 'Upload tool build' { & $python -m PyInstaller --noconfirm --clean --onedir --console --name ChelsyUpload upload_existing_to_supabase.py }
 
-    foreach ($exe in @('dist\ChelsyAI\ChelsyAI.exe', 'dist\ChelsyHost\ChelsyHost.exe', 'dist\ChelsyClient\ChelsyClient.exe',
+    foreach ($exe in @('dist\ChelsyAI\ChelsyAI.exe', 'dist\ChelsyHost\ChelsyHost.exe', 'dist\ChelsyAdmin\ChelsyAdmin.exe', 'dist\ChelsyClient\ChelsyClient.exe',
                        'dist\ChelsyConfig\ChelsyConfig.exe', 'dist\ChelsyDB\ChelsyDB.exe', 'dist\ChelsyMigrate\ChelsyMigrate.exe',
                        'dist\ChelsyUpload\ChelsyUpload.exe', 'dist\ChelsyAI\_internal\assets\chelsy_logo_small.png',
                        'dist\ChelsyClient\_internal\assets\chelsy_logo_small.png', 'dist\ChelsyClient\_internal\site_supabase_public.json')) {
