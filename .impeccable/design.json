@@ -1,0 +1,473 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-16T08:02:23+00:00",
+  "title": "Design System: Chelsy AI",
+  "extensions": {
+    "colorMeta": {
+      "background": {
+        "role": "neutral",
+        "displayName": "Полярная ночь",
+        "canonical": "#0B0C20",
+        "tonalRamp": [
+          "#1B1C31",
+          "#2A2C56",
+          "#36397D",
+          "#4046B5",
+          "#6D71C5",
+          "#9EA0D1",
+          "#CACCE2",
+          "#EFF0F5"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Первый подъём",
+        "canonical": "#11132B",
+        "tonalRamp": [
+          "#1D1E30",
+          "#2C2F53",
+          "#3A3E79",
+          "#474FAE",
+          "#7278C0",
+          "#A1A4CE",
+          "#CCCDE1",
+          "#F0F0F5"
+        ]
+      },
+      "panel-2": {
+        "role": "neutral",
+        "displayName": "Поле",
+        "canonical": "#161937",
+        "tonalRamp": [
+          "#1D1E30",
+          "#2D3053",
+          "#3A4079",
+          "#4751AE",
+          "#737ABF",
+          "#A1A5CE",
+          "#CCCEE1",
+          "#F0F0F5"
+        ]
+      },
+      "raised": {
+        "role": "neutral",
+        "displayName": "Приподнятый",
+        "canonical": "#1C2046",
+        "tonalRamp": [
+          "#1D1F30",
+          "#2D3053",
+          "#3A4079",
+          "#4751AE",
+          "#737ABF",
+          "#A1A5CE",
+          "#CCCEE1",
+          "#F0F0F5"
+        ]
+      },
+      "selected": {
+        "role": "neutral",
+        "displayName": "Выбранное",
+        "canonical": "#2A2160",
+        "tonalRamp": [
+          "#1F1B31",
+          "#302A56",
+          "#40367D",
+          "#5140B5",
+          "#7A6DC5",
+          "#A59ED1",
+          "#CECAE2",
+          "#F0EFF5"
+        ]
+      },
+      "stroke": {
+        "role": "neutral",
+        "displayName": "Штрих",
+        "canonical": "#262A52",
+        "tonalRamp": [
+          "#1E202E",
+          "#2F3250",
+          "#3E4374",
+          "#4F57A6",
+          "#787EBA",
+          "#A4A8CB",
+          "#CDCFDF",
+          "#F0F0F4"
+        ]
+      },
+      "violet": {
+        "role": "primary",
+        "displayName": "Брендовый фиолетовый",
+        "canonical": "#6D4AFF",
+        "tonalRamp": [
+          "#19103C",
+          "#24136C",
+          "#2C10A2",
+          "#3103F2",
+          "#623FF3",
+          "#9783EC",
+          "#C7BEEE",
+          "#EFECF8"
+        ]
+      },
+      "violet-hover": {
+        "role": "primary",
+        "displayName": "Фиолетовый наведения",
+        "canonical": "#7D5DFF",
+        "tonalRamp": [
+          "#19103C",
+          "#25136C",
+          "#2D10A2",
+          "#3203F2",
+          "#633FF3",
+          "#9883EC",
+          "#C8BEEE",
+          "#EFECF8"
+        ]
+      },
+      "lavender": {
+        "role": "secondary",
+        "displayName": "Лавандовый",
+        "canonical": "#A78BFA",
+        "tonalRamp": [
+          "#1C123B",
+          "#2B1769",
+          "#38169C",
+          "#440DE8",
+          "#7047EB",
+          "#A087E8",
+          "#CBC0EC",
+          "#F0EDF8"
+        ]
+      },
+      "teal": {
+        "role": "tertiary",
+        "displayName": "Бирюза сияния",
+        "canonical": "#21D9DA",
+        "tonalRamp": [
+          "#163637",
+          "#1F6061",
+          "#238F8F",
+          "#22D1D2",
+          "#57DADB",
+          "#91DEDE",
+          "#C4E8E8",
+          "#EEF7F7"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Снег",
+        "canonical": "#ECEBFA",
+        "tonalRamp": [
+          "#1B1934",
+          "#29255B",
+          "#332D85",
+          "#3C33C2",
+          "#6A63CF",
+          "#9C98D7",
+          "#CAC8E5",
+          "#EFEFF6"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Иней",
+        "canonical": "#A3A6C8",
+        "tonalRamp": [
+          "#21222C",
+          "#35364B",
+          "#474A6C",
+          "#5C6198",
+          "#8286B0",
+          "#AAADC5",
+          "#D0D1DC",
+          "#F1F1F4"
+        ]
+      },
+      "user-bubble": {
+        "role": "neutral",
+        "displayName": "Пузырь пользователя",
+        "canonical": "#231D4F",
+        "tonalRamp": [
+          "#1E1C31",
+          "#302B54",
+          "#3F377B",
+          "#5043B2",
+          "#796FC3",
+          "#A59FD0",
+          "#CECBE1",
+          "#F0F0F5"
+        ]
+      },
+      "code-bg": {
+        "role": "neutral",
+        "displayName": "Глубокая ночь кода",
+        "canonical": "#0E1029",
+        "tonalRamp": [
+          "#1B1D31",
+          "#2A2D56",
+          "#353B7D",
+          "#4048B5",
+          "#6D73C5",
+          "#9EA2D1",
+          "#CACCE2",
+          "#EFF0F5"
+        ]
+      },
+      "danger": {
+        "role": "error",
+        "displayName": "Коралл",
+        "canonical": "#FF8A65",
+        "tonalRamp": [
+          "#3C1B10",
+          "#6C2913",
+          "#A23310",
+          "#F23C03",
+          "#F36A3F",
+          "#EC9C83",
+          "#EECABE",
+          "#F8EFEC"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Приветствие пустого чата; 28/700 на входе."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "h1 в ответах, заголовки страниц Desktop."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "App bar, заголовок беседы."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Ответы и реплики; Desktop 15.5/1.62."
+      },
+      "body-small": {
+        "displayName": "Body small",
+        "purpose": "Списки, источники, примеры."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Подписи разделов и групп источников, иней."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Версия и мелкие метки."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Код: ChelsyMono (JetBrains Mono) на Android, Cascadia Code/Consolas на ПК."
+      },
+      "date": {
+        "displayName": "Date",
+        "purpose": "Даты источников и журнала, бирюза, табличные цифры."
+      }
+    },
+    "shadows": [
+      {
+        "name": "composer-desktop",
+        "value": "0 10px 30px -12px #00000099",
+        "purpose": "Только композер Desktop (Gradio); на Android и Windows композер без тени."
+      }
+    ],
+    "motion": [
+      {
+        "name": "aurora-drift",
+        "value": "2.4s linear infinite",
+        "purpose": "Горизонт при generating/checking: градиент течёт."
+      },
+      {
+        "name": "aurora-sweep",
+        "value": "1.6s ease-in-out infinite (Android 2.4s)",
+        "purpose": "Горизонт при searching: бирюзовая волна."
+      },
+      {
+        "name": "aurora-breathe",
+        "value": "1.6s ease-in-out infinite, alpha 0.45–0.85",
+        "purpose": "Горизонт при syncing: лавандовое дыхание."
+      },
+      {
+        "name": "pulse-ring",
+        "value": "1.6s cubic-bezier(.16,1,.3,1) infinite",
+        "purpose": "Кольцо точки Chelsy Pulse в рабочих состояниях."
+      },
+      {
+        "name": "hover-tone",
+        "value": "background .15s ease-out",
+        "purpose": "Тональный hover строк и плоских кнопок."
+      },
+      {
+        "name": "progress",
+        "value": "width .4s cubic-bezier(.16,1,.3,1)",
+        "purpose": "Прогресс задач исследования."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "animation:none",
+        "purpose": "prefers-reduced-motion / disableAnimations: горизонт и Pulse неподвижны."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "480px"
+      },
+      {
+        "name": "compact",
+        "value": "760px"
+      },
+      {
+        "name": "wide",
+        "value": "900px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Основная кнопка",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Сплошной фиолетовый для главного действия экрана: «Новый чат», «Войти», «Отправить».",
+      "html": "<button class=\"ds-btn-primary\">Новый чат</button>",
+      "css": ":host{--chelsy-bg:#0B0C20;--chelsy-panel:#11132B;--chelsy-panel-2:#161937;--chelsy-raised:#1C2046;--chelsy-selected:#2A2160;--chelsy-stroke:#262A52;--chelsy-violet:#6D4AFF;--chelsy-lavender:#A78BFA;--chelsy-teal:#21D9DA;--chelsy-text:#ECEBFA;--chelsy-muted:#A3A6C8;--chelsy-danger:#FF8A65;--chelsy-aurora:linear-gradient(90deg,#6D4AFF,#A78BFA 50%,#21D9DA);} .ds-btn-primary{font-family:'Segoe UI',Roboto,system-ui,sans-serif;background:#6D4AFF;color:#fff;border:0;border-radius:14px;min-height:48px;padding:0 20px;font-size:15px;font-weight:600;cursor:pointer;transition:background .15s ease-out;} .ds-btn-primary:hover{background:#7D5DFF;} .ds-btn-primary:active{background:#5B3BE6;} .ds-btn-primary:focus-visible{outline:2px solid #21D9DA;outline-offset:2px;} .ds-btn-primary:disabled{background:#1C2046;color:#A3A6C8;}"
+    },
+    {
+      "name": "Кнопка «Стоп»",
+      "kind": "button",
+      "refersTo": "button-stop",
+      "description": "Встаёт на место «Отправить» во время генерации.",
+      "html": "<button class=\"ds-btn-stop\">Стоп</button>",
+      "css": ".ds-btn-stop{font-family:'Segoe UI',Roboto,system-ui,sans-serif;background:#1C2046;color:#FF8A65;border:0;border-radius:12px;min-height:44px;padding:0 18px;font-size:14px;font-weight:600;cursor:pointer;transition:background .15s ease-out;} .ds-btn-stop:hover{background:#2E1F3A;} .ds-btn-stop:focus-visible{outline:2px solid #21D9DA;outline-offset:2px;}"
+    },
+    {
+      "name": "Плоская кнопка",
+      "kind": "button",
+      "refersTo": "button-flat",
+      "description": "Второстепенные действия: «Повторить ответ», «В избранное».",
+      "html": "<button class=\"ds-btn-flat\">Повторить ответ</button>",
+      "css": ".ds-btn-flat{font-family:'Segoe UI',Roboto,system-ui,sans-serif;background:transparent;color:#A78BFA;border:0;border-radius:10px;padding:4px 8px;font-size:14px;font-weight:500;cursor:pointer;transition:background .15s ease-out,color .15s ease-out;} .ds-btn-flat:hover{background:#11132B;color:#ECEBFA;} .ds-btn-flat:focus-visible{outline:2px solid #21D9DA;outline-offset:2px;}"
+    },
+    {
+      "name": "Композер с горизонтом",
+      "kind": "custom",
+      "refersTo": "composer",
+      "description": "Поле ввода с линией сияния 3 px сверху (Chelsy Pulse); здесь состояние generating, при reduced motion неподвижно.",
+      "html": "<div class=\"ds-composer\"><div class=\"ds-horizon\"></div><div class=\"ds-composer-row\"><textarea class=\"ds-composer-input\" rows=\"1\" placeholder=\"Спроси Chelsy…\"></textarea><button class=\"ds-send\" aria-label=\"Отправить\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 19V5M5 12l7-7 7 7\"/></svg></button></div></div>",
+      "css": ".ds-composer{position:relative;background:#161937;border-radius:20px;overflow:hidden;max-width:560px;} .ds-horizon{height:3px;background:linear-gradient(90deg,#6D4AFF,#A78BFA,#21D9DA,#A78BFA,#6D4AFF);background-size:200% 100%;animation:ds-drift 2.4s linear infinite;} @keyframes ds-drift{to{background-position:-200% 0;}} @media (prefers-reduced-motion:reduce){.ds-horizon{animation:none;}} .ds-composer-row{display:flex;align-items:flex-end;gap:8px;padding:6px 6px 6px 16px;} .ds-composer-input{flex:1;font-family:'Segoe UI',Roboto,system-ui,sans-serif;background:transparent;border:0;resize:none;color:#ECEBFA;font-size:16px;line-height:1.4;padding:10px 0;caret-color:#A78BFA;} .ds-composer-input::placeholder{color:#A3A6C8;} .ds-composer-input:focus{outline:none;} .ds-send{width:48px;height:48px;border-radius:50%;border:0;background:#6D4AFF;color:#fff;display:grid;place-items:center;cursor:pointer;} .ds-send:hover{background:#7D5DFF;} .ds-send:focus-visible{outline:2px solid #21D9DA;outline-offset:2px;}"
+    },
+    {
+      "name": "Пузырь пользователя",
+      "kind": "card",
+      "refersTo": "user-bubble",
+      "description": "Реплика пользователя справа, хвост 6 px в правом нижнем углу.",
+      "html": "<div class=\"ds-user-row\"><div class=\"ds-user-bubble\">Почему небо голубое?</div></div>",
+      "css": ".ds-user-row{display:flex;justify-content:flex-end;} .ds-user-bubble{font-family:'Segoe UI',Roboto,system-ui,sans-serif;background:#231D4F;color:#ECEBFA;border-radius:20px 20px 6px 20px;padding:11px 16px;font-size:16px;line-height:1.45;max-width:85%;}"
+    },
+    {
+      "name": "Источники ответа",
+      "kind": "custom",
+      "refersTo": "code-block",
+      "description": "Блок источников под ответом: лавандовые ссылки, бирюзовые табличные даты, одна тихая линия сверху.",
+      "html": "<div class=\"ds-sources\"><div class=\"ds-src-head\">Источники из интернета</div><a class=\"ds-src\" href=\"#\"><span class=\"ds-src-n\">1.</span><span class=\"ds-src-t\">Рэлеевское рассеяние — Википедия</span><span class=\"ds-src-d\">2026-10-02</span></a><a class=\"ds-src\" href=\"#\"><span class=\"ds-src-n\">2.</span><span class=\"ds-src-t\">Why is the sky blue? — NASA</span><span class=\"ds-src-d\">2026-09-18</span></a></div>",
+      "css": ".ds-sources{font-family:'Segoe UI',Roboto,system-ui,sans-serif;border-top:1px solid #262A52;padding-top:8px;max-width:520px;} .ds-src-head{font-size:12.5px;font-weight:600;color:#A3A6C8;margin:6px 0 2px;} .ds-src{display:flex;align-items:center;min-height:44px;gap:6px;text-decoration:none;border-radius:8px;padding:0 4px;transition:background .15s ease-out;} .ds-src:hover{background:#11132B;} .ds-src:focus-visible{outline:2px solid #21D9DA;outline-offset:2px;} .ds-src-n{width:24px;color:#A3A6C8;font-size:13.5px;font-variant-numeric:tabular-nums;} .ds-src-t{flex:1;color:#A78BFA;text-decoration:underline;font-size:14px;} .ds-src-d{color:#21D9DA;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap;}"
+    },
+    {
+      "name": "Блок кода",
+      "kind": "card",
+      "refersTo": "code-block",
+      "description": "Код как данные: моноширинный снег на самой глубокой ночи.",
+      "html": "<pre class=\"ds-code\"><code>for name, nm in wavelengths.items():\n    print(name, (700 / nm) ** 4)</code></pre>",
+      "css": ".ds-code{background:#0E1029;color:#ECEBFA;border:1px solid #262A52;border-radius:12px;padding:12px;font-family:'JetBrains Mono','Cascadia Code',Consolas,monospace;font-size:13.5px;line-height:1.5;overflow-x:auto;margin:0;}"
+    },
+    {
+      "name": "Поле ввода",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Поиск по истории, логин, тема исследования.",
+      "html": "<input class=\"ds-input\" placeholder=\"Поиск по истории\">",
+      "css": ".ds-input{font-family:'Segoe UI',Roboto,system-ui,sans-serif;background:#161937;color:#ECEBFA;border:1px solid #262A52;border-radius:14px;padding:12px 14px;font-size:15px;caret-color:#A78BFA;transition:border-color .15s ease-out;} .ds-input::placeholder{color:#A3A6C8;} .ds-input:focus{outline:none;border-color:#A78BFA;box-shadow:inset 0 0 0 0.6px #A78BFA;} .ds-input:focus-visible{outline:2px solid #21D9DA;outline-offset:2px;}"
+    },
+    {
+      "name": "Список бесед",
+      "kind": "nav",
+      "refersTo": "list-row-selected",
+      "description": "Строки сайдбара: hover — тон raised, выбранная — selected, без цветной кромки.",
+      "html": "<nav class=\"ds-nav\"><div class=\"ds-nav-label\">Недавние</div><a class=\"ds-nav-row is-selected\" href=\"#\">План поездки в Казань</a><a class=\"ds-nav-row\" href=\"#\">Рекурсия на Python</a><a class=\"ds-nav-row\" href=\"#\">Новости FastAPI</a></nav>",
+      "css": ".ds-nav{font-family:'Segoe UI',Roboto,system-ui,sans-serif;background:#11132B;padding:8px;width:260px;border-radius:12px;} .ds-nav-label{font-size:12.5px;font-weight:600;color:#A3A6C8;margin:6px 4px 4px;} .ds-nav-row{display:block;color:#ECEBFA;text-decoration:none;font-size:13.5px;padding:8px 12px;border-radius:10px;transition:background .15s ease-out;} .ds-nav-row:hover{background:#1C2046;} .ds-nav-row.is-selected{background:#2A2160;} .ds-nav-row:focus-visible{outline:2px solid #21D9DA;outline-offset:2px;}"
+    },
+    {
+      "name": "Чип «Интернет»",
+      "kind": "chip",
+      "refersTo": "chip-filter-selected",
+      "description": "Переключатель веб-поиска под композером.",
+      "html": "<button class=\"ds-chip\" aria-pressed=\"true\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#21D9DA\" stroke-width=\"2\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18\"/></svg>Интернет</button>",
+      "css": ".ds-chip{font-family:'Segoe UI',Roboto,system-ui,sans-serif;display:inline-flex;align-items:center;gap:6px;background:#2A2160;color:#ECEBFA;border:1px solid #262A52;border-radius:999px;padding:6px 14px;font-size:13px;cursor:pointer;} .ds-chip[aria-pressed=\"false\"]{background:#161937;} .ds-chip:hover{background:#1C2046;} .ds-chip:focus-visible{outline:2px solid #21D9DA;outline-offset:2px;}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Северное сияние",
+    "overview": "**Creative North Star: \"Северное сияние\"**\n\nСпокойная полярная ночь, в которой единственный свет — это Челси за работой. Фон тёмный и ровный,\nглубина строится двумя-тремя тональными ступенями, а не тенями и не рамками. Бренд-градиент\n(фиолетовый → лавандовый → бирюзовый) живёт в одном месте — тонкой «линии горизонта» над полем ввода:\nв покое он тусклый и неподвижный, во время ответа течёт, при поиске бирюзово пробегает, при\nсинхронизации дышит лавандой, без хоста становится ровным коралловым.\n\nРазговор — главный герой: широкая колонка чтения, ответы Челси без рамок и подложек с логотипом-аватаром\nслева, реплики пользователя — тихий приподнятый пузырь справа. Управление — стандартные контролы\nкаждой платформы (Material 3 на Android, ttk на Windows, Gradio на Desktop), окрашенные токенами, без\nсобственных «неоновых» карточек. Плотность средняя, акценты точечные: фиолетовый — действие,\nлавандовый — ссылки и второстепенные действия, бирюзовый — даты, «готова» и поиск.\n\nОтвергнуто подтверждённо: светящиеся неоновые карточки и градиентные пятна повсюду (категорийный\nшаблон), копирование облика ChatGPT/Claude.",
+    "keyCharacteristics": [
+      "Полярная ночь `background` и тональные подъёмы `panel` → `panel-2` → `raised`.",
+      "Аврора — только линия горизонта (3 px у поля ввода, 2 px неподвижная на пустом чате и входе).",
+      "Основное действие — сплошной фиолетовый, активная строка — тональный `selected`, не цветная кромка.",
+      "Даты источников — бирюзовые табличные цифры.",
+      "Код — данные: моноширинный шрифт, «снег» на самой глубокой ночи.",
+      "Движение только пока Челси работает; под «уменьшить движение» всё неподвижно."
+    ],
+    "rules": [
+      {
+        "name": "The One Horizon Rule",
+        "body": "Бренд-градиент рисуется только линией горизонта: 3 px сверху композера (состояние Chelsy Pulse) и 2 px неподвижная тусклая (≈35–45 %) линия на пустом чате, экране входа и приветствии Desktop. Кнопки, строки, карточки и фоны градиента не получают.",
+        "section": "colors"
+      },
+      {
+        "name": "The Solid Action Rule",
+        "body": "Основное действие — сплошной фиолетовый; на экране одна-две такие кнопки. Второстепенные действия — плоские лавандовые или иконки цвета инея.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tonal Selection Rule",
+        "body": "Активное и выбранное показывается тональным подъёмом (`raised` при наведении, `selected` при выборе), никогда цветной полосой по краю.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Date Rule",
+        "body": "Любая дата, процент или номер в списке — табличные цифры; даты бирюзовые и не переносятся посреди значения.",
+        "section": "typography"
+      },
+      {
+        "name": "The Code Is Data Rule",
+        "body": "Код — моноширинный «снег» на `code-bg`, без построчных подложек; подсветка синтаксиса на Desktop только снег / лавандовый (ключевые слова) / бирюза (строки, числа) / иней курсивом (комментарии), всё ≥ 7:1.",
+        "section": "typography"
+      },
+      {
+        "name": "The No Glow Rule",
+        "body": "Никаких светящихся ореолов, неоновых теней и цветных свечений — свет в этой системе только у линии горизонта.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** держать градиент сияния только в линии горизонта (3 px у композера, 2 px неподвижная на пустом экране и входе).",
+      "**Do** строить глубину тонами #0B0C20 → #11132B → #161937 → #1C2046, выбор — #2A2160.",
+      "**Do** показывать даты бирюзой с табличными цифрами и без переноса.",
+      "**Do** давать основному действию сплошной фиолетовый с белым текстом (5,15:1), а не фиолетовый текст на фоне.",
+      "**Do** оставлять ответы Челси без подложки, с логотипом-аватаром; пользователя — пузырём #231D4F 20/20/20/6 справа.",
+      "**Do** останавливать всё движение при «уменьшить движение» и анимировать только пока Челси работает.",
+      "**Do** использовать стандартные контролы платформы и векторные иконки (Material Icons, локальные SVG)."
+    ],
+    "donts": [
+      "**Don't** заменять или перекрашивать брендовую палитру #0B0C20 / #6D4AFF / #A78BFA / #21D9DA и логотип.",
+      "**Don't** добавлять свечения, неоновые тени и градиентные пятна на карточки, кнопки или фон.",
+      "**Don't** отмечать активную строку цветной кромкой или цветной боковой рамкой.",
+      "**Don't** использовать эмодзи или юникод-символы как иконки.",
+      "**Don't** ставить основной текст фиолетовым #6D4AFF на ночном фоне (3,75:1).",
+      "**Don't** подключать внешние шрифты или CDN на Desktop."
+    ]
+  }
+}
