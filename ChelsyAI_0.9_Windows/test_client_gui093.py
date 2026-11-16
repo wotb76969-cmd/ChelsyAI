@@ -45,9 +45,19 @@ class ClientGuiSmoke(unittest.TestCase):
             self.assertNotIn('**', text)
             app._show_conversations([{'id': 'a', 'title': 'Чат', 'favorite': True, 'updated': '2'},
                                      {'id': 'b', 'title': 'Другой', 'favorite': False, 'updated': '1'}])
-            self.assertTrue(app.conv_list.get(0).startswith('★'))
+            # Groups instead of glyph markers: header, favourite, header, recent.
+            self.assertEqual([app.conv_list.get(i).strip() for i in range(4)], ['Избранное', 'Чат', 'Недавние', 'Другой'])
+            self.assertIsNone(app._row_conversation(0))
+            self.assertEqual(app._row_conversation(1)['id'], 'a')
+            app.messages = [{'role': 'assistant', 'content': 'Это *курсив*, _тоже курсив_ и дата 2026-11-12.'}]
+            app.render()
+            self.assertNotIn('*', app.chat.get('1.0', 'end'))
+            self.assertTrue(app.chat.tag_ranges('italic'))
+            self.assertTrue(app.chat.tag_ranges('date'))
             for state in ('generating', 'searching', 'syncing', 'offline', 'ready'):
-                app.pulse.set(state)
+                app._set_status(state, state)
+                app.root.update()
+            self.assertIsNone(app.aurora._job)          # still when Chelsy is idle
             app.root.update()
         finally:
             app.root.destroy()

@@ -26,14 +26,15 @@ class _ResearchScreenState extends State<ResearchScreen> {
   Timer? _timer;
   String? _error;
 
+  /// Journal events as Material icons + colour (no emoji as icons).
   static const _learnIcon = {
-    'learned': '📚',
-    'added': '➕',
-    'auto-job': '🔎',
-    'auto-done': '✅',
-    'skipped': '⏸',
-    'limit': '⛔',
-    'error': '⚠️',
+    'learned': (Icons.menu_book_rounded, ChelsyColors.teal),
+    'added': (Icons.add_circle_outline_rounded, ChelsyColors.teal),
+    'auto-job': (Icons.travel_explore_rounded, ChelsyColors.lavender),
+    'auto-done': (Icons.check_circle_outline_rounded, ChelsyColors.teal),
+    'skipped': (Icons.pause_circle_outline_rounded, ChelsyColors.muted),
+    'limit': (Icons.block_rounded, ChelsyColors.danger),
+    'error': (Icons.error_outline_rounded, ChelsyColors.danger),
   };
 
   static const _status = {
@@ -166,7 +167,8 @@ class _ResearchScreenState extends State<ResearchScreen> {
             ..._journal.take(15).map((e) => ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
-                  leading: Text(_learnIcon[e['event']] ?? '•', style: const TextStyle(fontSize: 18)),
+                  leading: Icon((_learnIcon[e['event']] ?? (Icons.circle_outlined, ChelsyColors.muted)).$1,
+                      color: (_learnIcon[e['event']] ?? (Icons.circle_outlined, ChelsyColors.muted)).$2),
                   title: Text((e['title'] ?? '') as String, maxLines: 2, overflow: TextOverflow.ellipsis),
                   subtitle: Text(
                       '${((e['created'] ?? '') as String).replaceFirst('T', ' ').padRight(16).substring(0, 16)} · ${e['detail'] ?? ''}',

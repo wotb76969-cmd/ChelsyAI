@@ -1,7 +1,7 @@
 """Chelsy AI Windows Client GUI (Tkinter, standard library only).
 
 Layout mirrors the Desktop app: sidebar with new chat, history search,
-conversations (★ favourites first), research and knowledge windows, sync
+conversations (favourites first), research and knowledge windows, sync
 and profile; main chat with streaming answers, stop, regenerate, edit,
 copy, sources, model choice, web toggle, text-file attachments and the
 Chelsy Pulse status indicator.
@@ -37,8 +37,20 @@ LAVENDER = '#A78BFA'
 TEAL = '#21D9DA'
 TEXT = '#ECEBFA'
 MUTED = '#A3A6C8'
+RAISED = '#1C2046'
+SELECTED = '#2A2160'
+USER_BUBBLE = '#231D4F'
+CODE_BG = '#0E1029'
+DANGER = '#FF8A65'
 PULSE = {'ready': TEAL, 'generating': LAVENDER, 'searching': TEAL, 'checking': LAVENDER, 'syncing': VIOLET,
          'offline': '#FF8A65'}
+# Inline Markdown: **bold**, *italic* / _italic_, `code`, [link](https://…), ISO dates (sources).
+INLINE = re.compile(r'(\*\*[^*]+\*\*|(?<![\w*])\*[^*\s][^*]*\*(?![\w*])|(?<!\w)_[^_\s][^_]*_(?!\w)|`[^`]+`|'
+                    r'\[[^\]]+\]\(https?://[^)\s]+\)|\b\d{4}-\d{2}-\d{2}\b)')
+DATE = re.compile(r'\d{4}-\d{2}-\d{2}')
+RESEARCH_STATUS = {'queued': 'в очереди', 'running': 'идёт', 'done': 'готово', 'error': 'ошибка', 'stopped': 'остановлено',
+                   'fetched': 'на проверке', 'accepted': 'в базе', 'rejected': 'отклонено', 'duplicate': 'дубликат',
+                   'skipped': 'пропущено', 'found': 'найдено'}
 TEXT_EXT = ('.txt', '.md', '.py', '.json', '.csv', '.log', '.js', '.ts', '.html', '.css', '.yaml', '.yml', '.xml',
             '.ini', '.toml', '.dart', '.sql', '.java', '.c', '.cpp', '.cs', '.go', '.rs', '.sh', '.ps1', '.bat')
 
@@ -111,9 +123,105 @@ class Session:
         secure_store.clear()
 
 
+def _mix(a, b, t):
+    """Blend two #rrggbb colours (t=0 → a, t=1 → b)."""
+    a = [int(a[i:i + 2], 16) for i in (1, 3, 5)]
+    b = [int(b[i:i + 2], 16) for i in (1, 3, 5)]
+    return '#%02x%02x%02x' % tuple(round(x + (y - x) * t) for x, y in zip(a, b))
+
+
+def _aurora_at(x):
+    """Brand gradient violet → lavender → turquoise for x in [0, 1]."""
+    x = x % 1.0
+    return _mix(VIOLET, LAVENDER, x * 2) if x < 0.5 else _mix(LAVENDER, TEAL, (x - 0.5) * 2)
+
+
+class AuroraBand(Canvas):
+    """Signature move: Chelsy Pulse drawn as a 3 px aurora horizon on top of the composer.
+
+    ready: still, dim gradient · generating: the gradient drifts · searching: a turquoise sweep ·
+    syncing: lavender breathing · offline: flat coral. Animates only while Chelsy works.
+    """
+    SEGMENTS = 64
+
+    def __init__(self, master, height=3, base=PANEL2):
+        super().__init__(master, height=height, bg=base, highlightthickness=0, borderwidth=0)
+        self.base = base
+        self.state = 'ready'
+        self.phase = 0.0
+        self._job = None
+        self.rects = [self.create_rectangle(0, 0, 0, height, width=0) for _ in range(self.SEGMENTS)]
+        self.bind('<Configure>', lambda e: self._draw())
+
+    def set(self, state):
+        self.state = state
+        if state in ('generating', 'searching', 'syncing', 'checking'):
+            if self._job is None:
+                self._tick()
+        else:
+            if self._job is not None:
+                self.after_cancel(self._job)
+                self._job = None
+            self._draw()
+
+    def _tick(self):
+        self.phase = (self.phase + 0.02) % 1.0
+        self._draw()
+        self._job = self.after(60, self._tick)
+
+    def _colour(self, x):
+        state, t = self.state, self.phase
+        if state == 'offline':
+            return DANGER
+        if state == 'ready':
+            return _mix(self.base, _aurora_at(x * 0.999), 0.4)
+        if state == 'searching':
+            centre = t * 1.6 - 0.3
+            return _mix(self.base, TEAL, max(0.15, 1 - abs(x - centre) * 4))
+        if state == 'syncing':
+            import math
+            return _mix(self.base, LAVENDER, 0.45 + 0.4 * abs(math.sin(t * 2 * math.pi)))
+        return _aurora_at(x * 0.5 + t)          # generating / checking: drifting aurora
+
+    def _draw(self):
+        width = max(1, self.winfo_width())
+        h = int(self['height'])
+        step = width / self.SEGMENTS
+        for i, rect in enumerate(self.rects):
+            self.coords(rect, i * step, 0, (i + 1) * step + 1, h)
+            self.itemconfigure(rect, fill=self._colour(i / (self.SEGMENTS - 1)))
+
+
+class PlaceholderEntry(ttk.Entry):
+    """ttk.Entry with a muted placeholder (Tk has none built in)."""
+
+    def __init__(self, master, placeholder, variable, **kw):
+        super().__init__(master, textvariable=variable, **kw)
+        self.placeholder, self.variable = placeholder, variable
+        self._showing = False
+        self.bind('<FocusIn>', lambda e: self._hide())
+        self.bind('<FocusOut>', lambda e: self._show())
+        self._show()
+
+    def _show(self):
+        if not self.variable.get():
+            self._showing = True
+            self.configure(style='Placeholder.TEntry')
+            self.insert(0, self.placeholder)
+
+    def _hide(self):
+        if self._showing:
+            self.delete(0, END)
+            self.configure(style='TEntry')
+            self._showing = False
+
+    def value(self):
+        return '' if self._showing else self.variable.get()
+
+
 class Pulse(Canvas):
-    def __init__(self, master):
-        super().__init__(master, width=18, height=18, bg=PANEL, highlightthickness=0)
+    def __init__(self, master, bg=BG):
+        super().__init__(master, width=18, height=18, bg=bg, highlightthickness=0)
         self.state = 'ready'
         self.phase = 0
         self.ring = self.create_oval(2, 2, 16, 16, outline=TEAL, width=2)
@@ -178,37 +286,67 @@ class ChelsyClientApp:
 
     # ------------------------------------------------------------------ style
     def _style(self):
+        """Northern-lights theme on ttk 'clam': polar-night ground, tonal lifts, aurora only on actions."""
         style = ttk.Style(self.root)
         try:
             style.theme_use('clam')
         except Exception:
             pass
+        base = ('Segoe UI', 10)
         style.configure('.', background=BG, foreground=TEXT, fieldbackground=PANEL2, bordercolor=STROKE,
-                        font=('Segoe UI', 10))
+                        lightcolor=STROKE, darkcolor=STROKE, troughcolor=BG, font=base, focuscolor=TEAL)
         style.configure('TFrame', background=BG)
         style.configure('Side.TFrame', background=PANEL)
         style.configure('TLabel', background=BG, foreground=TEXT)
         style.configure('Side.TLabel', background=PANEL, foreground=TEXT)
         style.configure('Muted.TLabel', background=BG, foreground=MUTED, font=('Segoe UI', 9))
-        style.configure('SideMuted.TLabel', background=PANEL, foreground=MUTED, font=('Segoe UI', 9))
-        style.configure('Title.TLabel', background=BG, foreground=TEXT, font=('Segoe UI Semibold', 13))
-        style.configure('TButton', background=PANEL2, foreground=TEXT, borderwidth=1, focusthickness=2,
-                        focuscolor=TEAL, padding=(10, 6))
-        style.map('TButton', background=[('active', '#232857'), ('disabled', '#14162e')],
-                  foreground=[('disabled', '#5d6190')])
-        style.configure('Accent.TButton', background=VIOLET, foreground='white', font=('Segoe UI Semibold', 10))
-        style.map('Accent.TButton', background=[('active', '#7D5DFF'), ('disabled', '#3b2d86')])
-        style.configure('Stop.TButton', background='#3A1630', foreground='#FFD7E4')
-        style.configure('TCheckbutton', background=BG, foreground=TEXT)
-        style.map('TCheckbutton', background=[('active', BG)])
-        style.configure('TCombobox', fieldbackground=PANEL2, background=PANEL2, foreground=TEXT, arrowcolor=LAVENDER)
+        style.configure('SideMuted.TLabel', background=PANEL, foreground=MUTED, font=('Segoe UI Semibold', 9))
+        style.configure('Title.TLabel', background=BG, foreground=TEXT, font=('Segoe UI Semibold', 14))
+        # Default button: tonal lift, no border noise.
+        style.configure('TButton', background=RAISED, foreground=TEXT, bordercolor=RAISED, borderwidth=0,
+                        focusthickness=1, padding=(12, 7))
+        style.map('TButton', background=[('pressed', SELECTED), ('active', '#252A5C'), ('disabled', PANEL)],
+                  foreground=[('disabled', '#6B6F99')])
+        # Primary action: the one aurora-coloured button per area (white on violet 5.15:1).
+        style.configure('Accent.TButton', background=VIOLET, foreground='white', bordercolor=VIOLET,
+                        font=('Segoe UI Semibold', 10), padding=(14, 7))
+        style.map('Accent.TButton', background=[('pressed', '#5B3BE6'), ('active', '#7D5DFF'), ('disabled', '#3B2D86')],
+                  foreground=[('disabled', '#C9C2F5')])
+        style.configure('Stop.TButton', background=RAISED, foreground=DANGER, bordercolor=RAISED)
+        style.map('Stop.TButton', background=[('active', '#2E1F3A'), ('disabled', PANEL2)],
+                  foreground=[('disabled', '#6B6F99')])
+        # Flat text buttons for secondary actions (message and conversation actions).
+        style.configure('Flat.TButton', background=BG, foreground=LAVENDER, bordercolor=BG, padding=(8, 4))
+        style.map('Flat.TButton', background=[('active', PANEL), ('pressed', RAISED)],
+                  foreground=[('active', TEXT), ('disabled', '#6B6F99')])
+        style.configure('Nav.TButton', background=PANEL, foreground=TEXT, bordercolor=PANEL, anchor='w', padding=(10, 7))
+        style.map('Nav.TButton', background=[('active', RAISED), ('pressed', SELECTED)])
+        style.configure('TCheckbutton', background=BG, foreground=TEXT, indicatorbackground=PANEL2,
+                        indicatorforeground=TEAL)
+        style.map('TCheckbutton', background=[('active', BG)], indicatorbackground=[('selected', VIOLET)],
+                  indicatorforeground=[('selected', 'white')])
+        style.configure('TCombobox', fieldbackground=PANEL2, background=PANEL2, foreground=TEXT, arrowcolor=LAVENDER,
+                        bordercolor=STROKE, padding=4)
         style.map('TCombobox', fieldbackground=[('readonly', PANEL2)], foreground=[('readonly', TEXT)],
-                  selectbackground=[('readonly', PANEL2)], selectforeground=[('readonly', TEXT)])
+                  selectbackground=[('readonly', PANEL2)], selectforeground=[('readonly', TEXT)],
+                  bordercolor=[('focus', LAVENDER)])
         self.root.option_add('*TCombobox*Listbox.background', PANEL2)
         self.root.option_add('*TCombobox*Listbox.foreground', TEXT)
-        style.configure('TEntry', fieldbackground=PANEL2, foreground=TEXT, insertcolor=TEXT)
-        style.configure('Treeview', background=PANEL, fieldbackground=PANEL, foreground=TEXT, rowheight=26)
-        style.configure('Treeview.Heading', background=PANEL2, foreground=TEXT)
+        self.root.option_add('*TCombobox*Listbox.selectBackground', SELECTED)
+        style.configure('TEntry', fieldbackground=PANEL2, foreground=TEXT, insertcolor=LAVENDER, bordercolor=STROKE,
+                        padding=6)
+        style.map('TEntry', bordercolor=[('focus', LAVENDER)])
+        style.configure('Placeholder.TEntry', fieldbackground=PANEL2, foreground=MUTED, bordercolor=STROKE, padding=6)
+        style.configure('Treeview', background=PANEL, fieldbackground=PANEL, foreground=TEXT, rowheight=28,
+                        bordercolor=STROKE)
+        style.map('Treeview', background=[('selected', SELECTED)], foreground=[('selected', TEXT)])
+        style.configure('Treeview.Heading', background=PANEL2, foreground=MUTED, font=('Segoe UI Semibold', 9),
+                        bordercolor=STROKE, relief='flat')
+        style.map('Treeview.Heading', background=[('active', RAISED)])
+        style.configure('Night.Vertical.TScrollbar', background=RAISED, troughcolor=BG, bordercolor=BG,
+                        arrowcolor=MUTED, gripcount=0)
+        style.map('Night.Vertical.TScrollbar', background=[('active', SELECTED)])
+        style.configure('TSeparator', background=STROKE)
 
     # ------------------------------------------------------------------ login
     def _login_view(self):
@@ -221,7 +359,10 @@ class ChelsyClientApp:
         except Exception:
             pass
         ttk.Label(frame, text='Chelsy AI', style='Title.TLabel', font=('Segoe UI Semibold', 20)).pack()
-        ttk.Label(frame, text='Войди аккаунтом Chelsy Group', style='Muted.TLabel').pack(pady=(0, 16))
+        ttk.Label(frame, text='Войди аккаунтом Chelsy Group', style='Muted.TLabel').pack(pady=(0, 14))
+        horizon = AuroraBand(frame, height=2, base=BG)
+        horizon.configure(width=180)
+        horizon.pack(pady=(0, 18))
         self.host_var = StringVar(value=self.saved.get('host', 'https://'))
         self.email_var = StringVar(value=self.saved.get('email', ''))
         self.password_var = StringVar()
@@ -284,106 +425,146 @@ class ChelsyClientApp:
     def _main_view(self):
         main = Frame(self.root, bg=BG)
         main.pack(fill='both', expand=True)
-        side = ttk.Frame(main, style='Side.TFrame', padding=12, width=270)
+        side = ttk.Frame(main, style='Side.TFrame', padding=(14, 14, 14, 12), width=268)
         side.pack(side='left', fill='y')
         side.pack_propagate(False)
         head = ttk.Frame(side, style='Side.TFrame')
-        head.pack(fill='x', pady=(0, 10))
+        head.pack(fill='x', pady=(0, 14))
         try:
             from tkinter import PhotoImage
             self.logo_small = PhotoImage(file=str(asset('chelsy_logo_small.png'))).subsample(6, 6)
             Label(head, image=self.logo_small, bg=PANEL).pack(side='left')
         except Exception:
             pass
-        ttk.Label(head, text=' Chelsy AI', style='Side.TLabel', font=('Segoe UI Semibold', 14)).pack(side='left')
-        ttk.Button(side, text='＋  Новый чат', style='Accent.TButton', command=self.new_chat).pack(fill='x', pady=(0, 8))
+        ttk.Label(head, text='  Chelsy AI', style='Side.TLabel', font=('Segoe UI Semibold', 14)).pack(side='left')
+        ttk.Button(side, text='Новый чат', style='Accent.TButton', command=self.new_chat).pack(fill='x', pady=(0, 10))
         self.search_var = StringVar()
-        search = ttk.Entry(side, textvariable=self.search_var)
-        search.pack(fill='x', ipady=3)
+        search = PlaceholderEntry(side, 'Поиск по истории', self.search_var)
+        search.pack(fill='x', ipady=4)
         search.bind('<KeyRelease>', lambda e: self._debounce_search())
-        ttk.Label(side, text='ДИАЛОГИ  (★ — избранные)', style='SideMuted.TLabel').pack(anchor='w', pady=(10, 2))
-        self.conv_list = Listbox(side, bg=PANEL, fg=TEXT, selectbackground='#2A2160', selectforeground='white',
+        Frame(side, bg=PANEL, height=10).pack(fill='x')
+        self.conv_list = Listbox(side, bg=PANEL, fg=TEXT, selectbackground=SELECTED, selectforeground=TEXT,
                                  highlightthickness=0, borderwidth=0, activestyle='none', font=('Segoe UI', 10))
         self.conv_list.pack(fill='both', expand=True)
         self.conv_list.bind('<<ListboxSelect>>', lambda e: self._open_selected())
-        row = ttk.Frame(side, style='Side.TFrame')
-        row.pack(fill='x', pady=6)
-        for text, cmd in (('★', self.toggle_favorite), ('✎', self.rename_chat), ('🗑', self.delete_chat)):
-            ttk.Button(row, text=text, width=4, command=cmd).pack(side='left', padx=(0, 4))
-        for text, cmd in (('🔎 Исследования', self.open_research), ('📚 База знаний', self.open_knowledge),
-                          ('⟳ Синхронизация', self.sync)):
-            ttk.Button(side, text=text, command=cmd).pack(fill='x', pady=2)
+        self.conv_list.bind('<Button-3>', self._conversation_menu)
+        ttk.Separator(side).pack(fill='x', pady=(10, 8))
+        for text, cmd in (('Исследования', self.open_research), ('База знаний', self.open_knowledge),
+                          ('Синхронизировать', self.sync)):
+            ttk.Button(side, text=text, style='Nav.TButton', command=cmd).pack(fill='x', pady=1)
         profile = ttk.Frame(side, style='Side.TFrame')
         profile.pack(fill='x', pady=(10, 0))
-        ttk.Label(profile, text='👤 ' + (self.session.email or 'аккаунт'), style='Side.TLabel').pack(side='left')
-        ttk.Button(profile, text='Выйти', command=self.logout).pack(side='right')
+        initial = (self.session.email or '?')[:1].upper()
+        badge = Canvas(profile, width=28, height=28, bg=PANEL, highlightthickness=0)
+        badge.create_oval(1, 1, 27, 27, fill=VIOLET, outline='')
+        badge.create_text(14, 14, text=initial, fill='white', font=('Segoe UI Semibold', 10))
+        badge.pack(side='left')
+        ttk.Label(profile, text=' ' + (self.session.email or 'аккаунт')[:24], style='Side.TLabel').pack(side='left')
+        ttk.Button(profile, text='Выйти', style='Nav.TButton', command=self.logout).pack(side='right')
 
-        content = ttk.Frame(main, padding=(16, 10))
+        content = ttk.Frame(main, padding=(20, 14, 20, 12))
         content.pack(side='left', fill='both', expand=True)
         top = ttk.Frame(content)
         top.pack(fill='x')
         self.title_label = ttk.Label(top, text='Новый чат', style='Title.TLabel')
         self.title_label.pack(side='left')
-        status_box = Frame(top, bg=PANEL, padx=8, pady=4)
-        status_box.pack(side='right')
-        self.pulse = Pulse(status_box)
+        for text, cmd in (('Удалить', self.delete_chat), ('Переименовать', self.rename_chat),
+                          ('В избранное', self.toggle_favorite)):
+            ttk.Button(top, text=text, style='Flat.TButton', command=cmd).pack(side='right')
+        status = ttk.Frame(content)
+        status.pack(fill='x', pady=(2, 0))
+        self.pulse = Pulse(status)
         self.pulse.pack(side='left')
-        self.status_label = Label(status_box, text='Подключение…', bg=PANEL, fg=MUTED, font=('Segoe UI', 9))
-        self.status_label.pack(side='left', padx=(6, 0))
-        compose = Frame(content, bg=PANEL2, highlightthickness=1, highlightbackground='#3A3474', padx=8, pady=6)
-        self.input = Text(compose, height=3, wrap='word', bg=PANEL2, fg=TEXT, insertbackground=TEXT, borderwidth=0,
-                          highlightthickness=0, font=('Segoe UI', 11))
+        self.status_label = Label(status, text='Подключение…', bg=BG, fg=MUTED, font=('Segoe UI', 9))
+        self.status_label.pack(side='left', padx=(4, 0))
+
+        # Bottom widgets are packed first so they stay visible on small or scaled screens.
+        ttk.Label(content, text='Enter — отправить, Shift+Enter — новая строка. Ответы могут содержать ошибки.',
+                  style='Muted.TLabel').pack(side='bottom', anchor='w', pady=(6, 0))
+        opts = ttk.Frame(content)
+        opts.pack(side='bottom', fill='x', pady=(6, 0))
+        self.model_var = StringVar()
+        self.model_box = ttk.Combobox(opts, textvariable=self.model_var, state='readonly', width=18)
+        self.model_box.pack(side='left')
+        self.web_var = BooleanVar(value=self.saved.get('web', True))
+        ttk.Checkbutton(opts, text='Поиск в интернете', variable=self.web_var,
+                        command=lambda: self._remember(web=self.web_var.get())).pack(side='left', padx=12)
+        ttk.Button(opts, text='Прикрепить файл', style='Flat.TButton', command=self.attach).pack(side='left')
+        self.attachments = []
+        self.attach_label = ttk.Label(opts, text='', style='Muted.TLabel')
+        self.attach_label.pack(side='left', padx=8)
+
+        compose = Frame(content, bg=PANEL2)
+        compose.pack(side='bottom', fill='x')
+        # Signature: the aurora horizon along the composer's top edge shows Chelsy's state.
+        self.aurora = AuroraBand(compose)
+        self.aurora.pack(fill='x', side='top')
+        inner = Frame(compose, bg=PANEL2, padx=12, pady=8)
+        inner.pack(fill='both', expand=True)
+        buttons = Frame(inner, bg=PANEL2)
+        buttons.pack(side='right', padx=(10, 0), fill='y')  # packed before the input so it keeps its width
+        self.send_button = ttk.Button(buttons, text='Отправить', style='Accent.TButton', command=self.send, width=11)
+        self.send_button.pack(side='top', fill='x', pady=(0, 4))
+        self.stop_button = ttk.Button(buttons, text='Стоп', style='Stop.TButton', command=self.stop, width=11)
+        self.stop_button.pack(side='top', fill='x')
+        self.stop_button.state(['disabled'])
+
+        self.input = Text(inner, height=3, wrap='word', bg=PANEL2, fg=TEXT, insertbackground=LAVENDER, borderwidth=0,
+                          highlightthickness=0, font=('Segoe UI', 11), selectbackground=VIOLET, selectforeground='white')
         self.input.pack(side='left', fill='both', expand=True)
         self.input.bind('<Return>', self._enter)
         self.input.bind('<Shift-Return>', lambda e: None)
-        buttons = Frame(compose, bg=PANEL2)
-        buttons.pack(side='right', padx=(6, 0))
-        self.send_button = ttk.Button(buttons, text='➤', width=4, style='Accent.TButton', command=self.send)
-        self.send_button.pack(side='top', pady=1)
-        self.stop_button = ttk.Button(buttons, text='■', width=4, style='Stop.TButton', command=self.stop)
-        self.stop_button.pack(side='top', pady=1)
-        self.stop_button.state(['disabled'])
-        opts = ttk.Frame(content)
-        self.model_var = StringVar()
-        self.model_box = ttk.Combobox(opts, textvariable=self.model_var, state='readonly', width=22)
-        self.model_box.pack(side='left')
-        self.web_var = BooleanVar(value=self.saved.get('web', True))
-        ttk.Checkbutton(opts, text='🌐 Поиск в интернете', variable=self.web_var,
-                        command=lambda: self._remember(web=self.web_var.get())).pack(side='left', padx=10)
-        self.attachments = []
-        self.attach_label = ttk.Label(opts, text='', style='Muted.TLabel')
-        for text, cmd in (('📎', self.attach), ('↻ Повторить', self.regenerate), ('✎ Изменить', self.edit_last),
-                          ('⧉ Копировать', self.copy_answer)):
-            ttk.Button(opts, text=text, command=cmd).pack(side='left', padx=2)
-        self.attach_label.pack(side='left', padx=8)
-        # Bottom widgets are packed first so they stay visible on small or scaled screens.
-        ttk.Label(content, text='Enter — отправить · Shift+Enter — новая строка · ответы могут содержать ошибки',
-                  style='Muted.TLabel').pack(side='bottom', anchor='w', pady=(4, 0))
-        opts.pack(side='bottom', fill='x', pady=(6, 0))
-        compose.pack(side='bottom', fill='x')
+        actions = ttk.Frame(content)
+        actions.pack(side='bottom', fill='x', pady=(0, 6))
+        for text, cmd in (('Копировать ответ', self.copy_answer), ('Изменить последнее', self.edit_last),
+                          ('Повторить ответ', self.regenerate)):
+            ttk.Button(actions, text=text, style='Flat.TButton', command=cmd).pack(side='right')
+
         chat_frame = Frame(content, bg=BG)
-        chat_frame.pack(fill='both', expand=True, pady=(10, 8))
+        chat_frame.pack(fill='both', expand=True, pady=(12, 8))
         self.chat = Text(chat_frame, wrap='word', bg=BG, fg=TEXT, insertbackground=TEXT, borderwidth=0,
-                         highlightthickness=0, font=('Segoe UI', 11), padx=14, pady=10, spacing1=2, spacing3=4)
-        scroll = ttk.Scrollbar(chat_frame, command=self.chat.yview)
+                         highlightthickness=0, font=('Segoe UI', 11), padx=18, pady=10, spacing1=2, spacing3=5,
+                         selectbackground=VIOLET, selectforeground='white')
+        scroll = ttk.Scrollbar(chat_frame, command=self.chat.yview, style='Night.Vertical.TScrollbar')
         self.chat.configure(yscrollcommand=scroll.set, state='disabled')
         scroll.pack(side='right', fill='y')
         self.chat.pack(side='left', fill='both', expand=True)
-        self.chat.tag_configure('user', background='#231D4F', lmargin1=180, lmargin2=180, rmargin=10,
-                                spacing1=8, spacing3=8)
-        self.chat.tag_configure('author', foreground=LAVENDER, font=('Segoe UI Semibold', 10), spacing1=12)
+        self.chat.tag_configure('user', background=USER_BUBBLE, lmargin1=160, lmargin2=160, rmargin=8,
+                                spacing1=10, spacing3=10, justify='right')
+        self.chat.tag_configure('author', foreground=LAVENDER, font=('Segoe UI Semibold', 10), spacing1=16)
+        self.chat.tag_configure('author_user', foreground=MUTED, font=('Segoe UI Semibold', 10), spacing1=16,
+                                justify='right', rmargin=8)
         self.chat.tag_configure('bold', font=('Segoe UI Semibold', 11))
+        self.chat.tag_configure('italic', font=('Segoe UI', 11, 'italic'))
         self.chat.tag_configure('heading', font=('Segoe UI Semibold', 13), spacing1=8)
-        self.chat.tag_configure('code', font=('Consolas', 10), background='#0E1029', foreground='#E6E3FF',
-                                lmargin1=20, lmargin2=20)
-        self.chat.tag_configure('inline', font=('Consolas', 10), background='#1A1D40')
+        self.chat.tag_configure('code', font=('Consolas', 10), background=CODE_BG, foreground=TEXT,
+                                lmargin1=24, lmargin2=24, rmargin=24)
+        self.chat.tag_configure('inline', font=('Consolas', 10), background=RAISED)
         self.chat.tag_configure('link', foreground=LAVENDER, underline=True)
+        self.chat.tag_configure('date', foreground=TEAL)
         self.chat.tag_configure('muted', foreground=MUTED, font=('Segoe UI', 9, 'italic'))
+        self.chat.tag_configure('rule', foreground=STROKE)
         self.chat.tag_bind('link', '<Button-1>', self._click_link)
         self.chat.tag_bind('link', '<Enter>', lambda e: self.chat.configure(cursor='hand2'))
         self.chat.tag_bind('link', '<Leave>', lambda e: self.chat.configure(cursor=''))
-
         return main
+
+    def _conversation_menu(self, event):
+        index = self.conv_list.nearest(event.y)
+        conv = self._row_conversation(index)
+        if conv is None:
+            return
+        self.conv_list.selection_clear(0, END)
+        self.conv_list.selection_set(index)
+        self._open_selected()
+        from tkinter import Menu
+        menu = Menu(self.root, tearoff=0, bg=PANEL2, fg=TEXT, activebackground=SELECTED, activeforeground=TEXT,
+                    borderwidth=0)
+        menu.add_command(label='Убрать из избранного' if conv['favorite'] else 'В избранное', command=self.toggle_favorite)
+        menu.add_command(label='Переименовать…', command=self.rename_chat)
+        menu.add_separator()
+        menu.add_command(label='Удалить', command=self.delete_chat)
+        menu.tk_popup(event.x_root, event.y_root)
 
     # ------------------------------------------------------------------ helpers
     def _background(self, fn, *args):
@@ -402,7 +583,13 @@ class ChelsyClientApp:
 
     def _set_status(self, state, text):
         self.pulse.set(state)
+        if hasattr(self, 'aurora'):
+            self.aurora.set(state)
         self.status_label.configure(text=text)
+
+    def _search_query(self):
+        value = self.search_var.get().strip()
+        return '' if value == 'Поиск по истории' else value
 
     def _debounce_search(self):
         if hasattr(self, '_search_job'):
@@ -426,15 +613,19 @@ class ChelsyClientApp:
                 self.chat.insert(END, line + '\n', 'code')
                 continue
             if line.strip() == '---':
-                self.chat.insert(END, '─' * 40 + '\n', 'muted')
+                self.chat.insert(END, '─' * 40 + '\n', 'rule')
                 continue
             m = re.match(r'^(#{1,4})\s+(.*)', line)
             if m:
                 self.chat.insert(END, m.group(2) + '\n', 'heading')
                 continue
-            for part in re.split(r'(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https?://[^)\s]+\))', line):
+            for part in INLINE.split(line):
                 if part.startswith('**') and part.endswith('**') and len(part) > 4:
                     self.chat.insert(END, part[2:-2], 'bold')
+                elif len(part) > 2 and part[0] == part[-1] and part[0] in '*_' and part[1] not in ' *_':
+                    self.chat.insert(END, part[1:-1], 'italic')
+                elif DATE.fullmatch(part):
+                    self.chat.insert(END, part, 'date')
                 elif part.startswith('`') and part.endswith('`') and len(part) > 2:
                     self.chat.insert(END, part[1:-1], 'inline')
                 elif part.startswith('[') and '](' in part:
@@ -448,11 +639,15 @@ class ChelsyClientApp:
         self.chat.configure(state='normal')
         self.chat.delete('1.0', END)
         if not self.messages and streaming_text is None:
-            self.chat.insert(END, '\n\n   Привет! Я Челси 💜\n', 'heading')
-            self.chat.insert(END, '   Спроси что угодно, попроси объяснить, помочь с кодом или исследовать тему.\n', 'muted')
+            self.chat.insert(END, '\n\nПривет! Я Челси 💜\n', 'heading')
+            self.chat.insert(END, 'Спрашивай, проси объяснить, помочь с кодом или изучить тему — я покажу источники '
+                                  'и даты.\n\nНапример:\n', 'muted')
+            for example in ('Объясни простыми словами, как работает Wi‑Fi', 'Найди свежие новости о Python',
+                            'Изучи документацию FastAPI'):
+                self.chat.insert(END, '  ' + example + '\n', ('link', 'example:' + example))
         for m in self.messages:
             if m['role'] == 'user':
-                self.chat.insert(END, 'Ты\n', 'author')
+                self.chat.insert(END, 'Ты\n', 'author_user')
                 self.chat.insert(END, m['content'] + '\n', 'user')
             else:
                 self.chat.insert(END, 'Chelsy\n', 'author')
@@ -466,6 +661,11 @@ class ChelsyClientApp:
     def _click_link(self, event):
         index = self.chat.index(f'@{event.x},{event.y}')
         for tag in self.chat.tag_names(index):
+            if tag.startswith('example:'):
+                self.input.delete('1.0', END)
+                self.input.insert('1.0', tag[8:])
+                self.input.focus_set()
+                return
             if tag.startswith('url:https://'):
                 webbrowser.open(tag[4:])
 
@@ -501,24 +701,46 @@ class ChelsyClientApp:
 
     def load_conversations(self):
         if self.client:
-            self._api(self._cached_conversations, self.search_var.get().strip(), then='conversations')
+            self._api(self._cached_conversations, self._search_query(), then='conversations')
 
     def _show_conversations(self, items):
-        self.conversations = sorted(items, key=lambda c: (not c['favorite'], c['updated']), reverse=False)
         favs = [c for c in items if c['favorite']]
         rest = [c for c in items if not c['favorite']]
         self.conversations = favs + rest
+        # Row map: None marks a group header row (not selectable).
+        self.rows = []
         self.conv_list.delete(0, END)
+
+        def header(text):
+            self.conv_list.insert(END, text)
+            self.conv_list.itemconfigure(END, fg=MUTED, selectbackground=PANEL, selectforeground=MUTED)
+            self.rows.append(None)
+        if favs:
+            header('Избранное')
         for c in self.conversations:
-            self.conv_list.insert(END, ('★ ' if c['favorite'] else '   ') + c['title'][:40])
+            if rest and c is rest[0]:
+                header('Недавние')
+            self.conv_list.insert(END, '  ' + c['title'][:40])
+            if c['favorite']:
+                self.conv_list.itemconfigure(END, fg=LAVENDER)
+            self.rows.append(c)
             if c['id'] == self.conversation:
                 self.conv_list.selection_set(END)
+
+    def _row_conversation(self, index):
+        rows = getattr(self, 'rows', None)
+        if rows is None:
+            return self.conversations[index] if index < len(self.conversations) else None
+        return rows[index] if 0 <= index < len(rows) else None
 
     def _open_selected(self):
         sel = self.conv_list.curselection()
         if not sel or self.busy:
             return
-        conv = self.conversations[sel[0]]
+        conv = self._row_conversation(sel[0])
+        if conv is None:                  # a group header
+            self.conv_list.selection_clear(sel[0])
+            return
         self.conversation = conv['id']
         self.title_label.configure(text=conv['title'][:70])
         self._api(self._cached_messages, conv['id'], then='messages')
@@ -566,7 +788,7 @@ class ChelsyClientApp:
             except UnicodeDecodeError:
                 text = data.decode('cp1251', errors='replace')
             self.attachments.append({'name': path.name, 'text': text[:12000]})
-        self.attach_label.configure(text=('📎 ' + ', '.join(a['name'] for a in self.attachments)) if self.attachments else '')
+        self.attach_label.configure(text=('Файлы: ' + ', '.join(a['name'] for a in self.attachments)) if self.attachments else '')
 
     def send(self, regenerate=False, edit_id=None, text=None):
         if self.busy or not self.client:
@@ -689,7 +911,8 @@ class ChelsyClientApp:
         def fill_jobs(data):
             jobs.delete(*jobs.get_children())
             for j in data:
-                jobs.insert('', END, iid=j['id'], values=(j['topic'][:60], j['status'], int(j['progress'] * 100), j['message'][:100]))
+                jobs.insert('', END, iid=j['id'], values=(j['topic'][:60], RESEARCH_STATUS.get(j['status'], j['status']),
+                                                          int(j['progress'] * 100), j['message'][:100]))
 
         def show_items(_=None):
             sel = jobs.selection()
@@ -707,7 +930,7 @@ class ChelsyClientApp:
         def fill_items(data):
             items.delete(*items.get_children())
             for i in data['items']:
-                items.insert('', END, iid=str(i['id']), values=(i['status'], f'{i["trust"]:.2f}', (i['published'] or '—')[:10], i['title'][:80], i['url']))
+                items.insert('', END, iid=str(i['id']), values=(RESEARCH_STATUS.get(i['status'], i['status']), f'{i["trust"]:.2f}', (i['published'] or '—')[:10], i['title'][:80], i['url']))
 
         def review(action, scope='personal'):
             selected = items.selection()
@@ -732,12 +955,12 @@ class ChelsyClientApp:
             if sel:
                 self._api(self.client.stop_research, sel[0], then=None)
                 win.after(800, refresh_jobs)
-        ttk.Button(top, text='▶ Начать', style='Accent.TButton', command=start).pack(side='left')
-        ttk.Button(top, text='⏹ Стоп', command=stop_job).pack(side='left', padx=4)
+        ttk.Button(top, text='Начать', style='Accent.TButton', command=start).pack(side='left')
+        ttk.Button(top, text='Остановить', command=stop_job).pack(side='left', padx=4)
         ttk.Button(top, text='↻', command=refresh_jobs).pack(side='left')
-        ttk.Button(actions, text='➕ В личную базу', style='Accent.TButton', command=lambda: review('accept')).pack(side='left')
-        ttk.Button(actions, text='➕ В общую базу (владелец)', command=lambda: review('accept', 'shared')).pack(side='left', padx=6)
-        ttk.Button(actions, text='✖ Отклонить', command=lambda: review('reject')).pack(side='left')
+        ttk.Button(actions, text='В личную базу', style='Accent.TButton', command=lambda: review('accept')).pack(side='left')
+        ttk.Button(actions, text='В общую базу (владелец)', command=lambda: review('accept', 'shared')).pack(side='left', padx=6)
+        ttk.Button(actions, text='Отклонить', command=lambda: review('reject')).pack(side='left')
         ttk.Button(actions, text='Открыть ссылку', command=lambda: [webbrowser.open(items.item(i)['values'][4]) for i in items.selection()[:1]
                                                                     if str(items.item(i)['values'][4]).startswith('https://')]).pack(side='right')
         jobs.bind('<<TreeviewSelect>>', show_items)
@@ -764,8 +987,8 @@ class ChelsyClientApp:
         ttk.Label(win, text='Журнал автоизучения — что Chelsy изучила сама', style='Muted.TLabel').pack(anchor='w', padx=10)
         journal = Text(win, height=9, wrap='word', bg=PANEL, fg=TEXT, borderwidth=0, font=('Segoe UI', 9))
         journal.pack(fill='x', padx=10, pady=(2, 10))
-        labels = {'learned': '📚 изучено', 'added': '➕ добавлено', 'auto-job': '🔎 начато', 'auto-done': '✅ готово',
-                  'skipped': '⏸ на проверку', 'limit': '⛔ лимит', 'error': '⚠️ ошибка'}
+        labels = {'learned': 'изучено', 'added': 'добавлено', 'auto-job': 'начато', 'auto-done': 'готово',
+                  'skipped': 'на проверку', 'limit': 'лимит', 'error': 'ошибка'}
 
         def fill_journal(data):
             journal.delete('1.0', END)

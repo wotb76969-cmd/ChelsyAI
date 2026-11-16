@@ -24,7 +24,9 @@ VERSION = '0.9.3'
 TEXT_TYPES = ['.txt', '.md', '.py', '.json', '.csv', '.log', '.js', '.ts', '.html', '.css', '.yaml', '.yml', '.xml',
               '.ini', '.toml', '.dart', '.sql', '.java', '.c', '.cpp', '.cs', '.go', '.rs', '.sh', '.ps1', '.bat']
 MAX_FILE = 200_000
-SECTIONS = ['💬 Чат', '🔎 Исследования', '💾 Память', '📚 База знаний', '⚙️ Настройки']
+EXAMPLES = ['Объясни простыми словами, как работает Wi‑Fi', 'Найди свежие новости о Python',
+            'Изучи документацию FastAPI']
+SECTIONS = ['Чат', 'Исследования', 'Память', 'База знаний', 'Настройки']
 CANCELS = {}
 CANCEL_LOCK = threading.Lock()
 
@@ -49,7 +51,8 @@ def brand_header_html():
 
 def welcome_html():
     return (f'<div class="chelsy-welcome"><img alt="" src="data:image/png;base64,{_logo_data()}">'
-            '<h2>Привет! Я Челси 💜</h2><p>Спроси что угодно, попроси объяснить, помочь с кодом или исследовать тему.</p></div>')
+            '<h2>Привет! Я Челси 💜</h2><p>Спрашивай, проси объяснить, помочь с кодом или изучить тему — '
+            'я покажу источники и даты.</p><div class="chelsy-horizon"></div></div>')
 
 
 # ------------------------------------------------------------------ helpers
@@ -119,8 +122,8 @@ def status_html(request: gr.Request):
     from knowledge import services
     kb = services()['db'].stats(username)
     online = live_tools.internet_available()
-    extra = (f'<span class="pulse-meta">{"🌐 онлайн" if online else "📴 нет интернета"} · '
-             f'📚 {kb["documents"]} док.</span>')
+    extra = (f'<span class="pulse-meta">{"онлайн" if online else "без интернета"} · '
+             f'<span class="num">{kb["documents"]}</span> в базе знаний</span>')
     return pulse_html('ready' if up else 'offline', None if up else 'Ollama недоступна — запусти Ollama', extra)
 
 
@@ -128,7 +131,7 @@ def conversations_update(username, query='', selected=None):
     items = core.list_conversations(username, query)
     favs = [c for c in items if c['favorite']]
     recent = [(c['title'][:48] or 'Без названия', c['id']) for c in items if not c['favorite']]
-    fav_choices = [('★ ' + (c['title'][:46] or 'Без названия'), c['id']) for c in favs]
+    fav_choices = [((c['title'][:48] or 'Без названия'), c['id']) for c in favs]
     return (gr.update(choices=fav_choices, value=selected if any(c['id'] == selected for c in favs) else None),
             gr.update(choices=recent, value=selected if any(v == selected for _, v in recent) else None))
 
@@ -145,7 +148,7 @@ def title_html(username, conversation_id):
         return '<div class="chelsy-conv-title">Новый чат</div>'
     item = next((c for c in core.list_conversations(username, limit=500) if c['id'] == conversation_id), None)
     title = item['title'] if item else 'Новый чат'
-    star = ' <span class="fav">★</span>' if item and item['favorite'] else ''
+    star = ' <span class="fav">в избранном</span>' if item and item['favorite'] else ''
     return f'<div class="chelsy-conv-title">{html.escape(title)}{star}</div>'
 
 
@@ -332,11 +335,17 @@ def initial_load(request: gr.Request):
     display = html.escape(request.username or '')
     profile = (f'<div class="chelsy-profile"><div class="avatar">{html.escape((request.username or "?")[:1].upper())}</div>'
                f'<div><div class="name">{display}</div><div class="role">{"Владелец" if is_owner else "Пользователь"}'
-               f'</div></div><a class="logout" href="/logout" title="Выйти">⎋</a></div>')
+               f'</div></div><a class="logout" href="/logout">Выйти</a></div>')
     choices = model_choices()
     return (cid, chat, ids, title_html(username, cid), favs, recent, profile,
             gr.update(choices=choices, value=default_model(username)),
             gr.update(value=core.get_setting(username, 'web_search', True)))
+
+
+def fill_example(data: gr.SelectData):
+    """Empty-state examples teach the features (explain, fresh search, research) by filling the composer."""
+    value = data.value if isinstance(data.value, dict) else {'text': str(data.value)}
+    return gr.update(value={'text': value.get('text', ''), 'files': []})
 
 
 def navigate(choice):
@@ -357,9 +366,9 @@ def research_start(topic, pages, scope, auto, request: gr.Request):
         job = _kb()['scheduler'].submit(username, topic, target_scope=target, max_pages=int(pages),
                                         auto_accept=bool(auto), is_owner=owner(request))
     except ResearchError as exc:
-        return f'❌ {exc}', gr.update()
+        return f'Не удалось запустить: {exc}', gr.update()
     _kb()['scheduler'].start(owner_check=lambda u: is_admin_key(u))
-    return '✅ Исследование запущено.', gr.update(value=job)
+    return 'Исследование запущено.', gr.update(value=job)
 
 
 def is_admin_key(storage):
@@ -372,8 +381,8 @@ def is_admin_key(storage):
 def research_jobs(request: gr.Request):
     username = user(request)
     jobs = _kb()['db'].jobs(username)
-    status_ru = {'queued': '⏳ в очереди', 'running': '🔄 идёт', 'done': '✅ готово', 'error': '⚠️ ошибка',
-                 'stopped': '⏹ остановлено'}
+    status_ru = {'queued': 'в очереди', 'running': 'идёт', 'done': 'готово', 'error': 'ошибка',
+                 'stopped': 'остановлено'}
     rows = [[j['id'][:8], j['topic'][:70], status_ru.get(j['status'], j['status']), f'{int(j["progress"] * 100)}%',
              j['message'][:90], j['created'][:16].replace('T', ' ')] for j in jobs]
     choices = [(f'{j["topic"][:50]} · {status_ru.get(j["status"], j["status"])}', j['id']) for j in jobs]
@@ -394,7 +403,7 @@ def research_items(job_id, request: gr.Request):
     head = (f'<div class="chelsy-progress"><div style="width:{pct}%"></div></div>'
             f'<div class="chelsy-note">{html.escape(job["message"])}</div>')
     rows = [[i['id'], status_ru.get(i['status'], i['status']), f'{i["trust"]:.2f}', (i['published'] or '—')[:10],
-             i['title'][:80], i['url'], ('⚠️ ' + ', '.join(i['flags']) + ' ' if i['flags'] else '') + i['note'][:120]]
+             i['title'][:80], i['url'], ('Внимание: ' + ', '.join(i['flags']) + '. ' if i['flags'] else '') + i['note'][:120]]
             for i in items]
     choices = [(f'#{i["id"]} {i["title"][:60]}', i['id']) for i in items if i['status'] == 'fetched']
     return head, rows, gr.update(choices=choices, value=[])
@@ -421,7 +430,7 @@ def research_review(job_id, selected, action, request: gr.Request):
 def research_stop(job_id, request: gr.Request):
     username = user(request)
     if job_id and _kb()['scheduler'].stop(job_id, username):
-        return '⏹ Остановка запрошена.'
+        return 'Остановка запрошена.'
     return 'Выбери исследование.'
 
 
@@ -432,7 +441,7 @@ def schedule_add(topic, minutes, request: gr.Request):
     if not topic or len(topic.strip()) < 3:
         return 'Укажи тему или ссылку.', schedules_md(request)
     _kb()['db'].add_schedule(username, topic.strip(), int(minutes), 'shared', auto_accept=False)
-    return '✅ Периодическая проверка добавлена (только разрешённые источники).', schedules_md(request)
+    return 'Периодическая проверка добавлена (только разрешённые источники).', schedules_md(request)
 
 
 def schedules_md(request: gr.Request):
@@ -457,8 +466,8 @@ def source_add(domain, request: gr.Request):
     try:
         _kb()['db'].allow_source(domain, user(request), 0.75)
     except ValueError as exc:
-        return f'❌ {exc}', sources_md()
-    return '✅ Источник разрешён.', sources_md()
+        return f'Не получилось: {exc}', sources_md()
+    return 'Источник разрешён.', sources_md()
 
 
 # ------------------------------------------------------------------ knowledge
@@ -473,7 +482,7 @@ def knowledge_view(query, scope, request: gr.Request):
     rows = [[d['id'], 'личная' if d['personal'] else 'общая', d['title'][:80], (d['published'] or '—')[:10],
              d['fetched'][:10], f'{d["trust"]:.2f}', d['version'], d['url']] for d in docs]
     conflicts = db.conflicts(username)
-    conflict_md = '\n\n'.join(f'⚖️ «{html.escape(c["claim_a"][:160])}» ([источник]({c["url_a"]})) **vs** '
+    conflict_md = '\n\n'.join(f'«{html.escape(c["claim_a"][:160])}» ([источник]({c["url_a"]})) **vs** '
                               f'«{html.escape(c["claim_b"][:160])}» ([источник]({c["url_b"]}))' for c in conflicts[:10]) \
         or '_Противоречий не обнаружено._'
     return summary, rows, conflict_md
@@ -491,9 +500,9 @@ def knowledge_preview(query, request: gr.Request):
                        for i, r in enumerate(results, 1))
 
 
-LEARN_LABELS = {'learned': '📚 изучено', 'added': '➕ добавлено вручную', 'auto-job': '🔎 начато изучение',
-                'auto-done': '✅ готово', 'skipped': '⏸ оставлено на проверку', 'limit': '⛔ дневной лимит',
-                'error': '⚠️ ошибка'}
+LEARN_LABELS = {'learned': 'изучено', 'added': 'добавлено вручную', 'auto-job': 'начато изучение',
+                'auto-done': 'готово', 'skipped': 'оставлено на проверку', 'limit': 'дневной лимит',
+                'error': 'ошибка'}
 
 
 def learning_view(request: gr.Request):
@@ -501,13 +510,18 @@ def learning_view(request: gr.Request):
     username = user(request)
     cfg = autolearn.settings()
     items = _kb()['db'].journal(username, 40)
-    lines = [f'Сегодня автоматических исследований: **{_kb()["db"].events_today(username)}** из {cfg["daily_jobs"]}.', '']
+    cls = {'learned': 'ok', 'auto-done': 'ok', 'added': 'ok', 'limit': 'warn', 'error': 'warn'}
+    rows = []
     for e in items:
-        link = f' — [источник]({e["url"]})' if e['url'].startswith('https://') else ''
-        lines.append(f'- `{e["created"][:16].replace("T", " ")}` {LEARN_LABELS.get(e["event"], e["event"])}: '
-                     f'{html.escape(e["title"][:100])}{link} <small>{html.escape(e["detail"][:120])}</small>')
-    if not items:
-        lines.append('_Пока пусто. Chelsy начнёт изучать источники после ответов с поиском в интернете._')
+        link = f' · <a href="{html.escape(e["url"])}" target="_blank" rel="noopener">источник</a>' if e['url'].startswith('https://') else ''
+        rows.append(f'<li><span class="num">{html.escape(e["created"][:16].replace("T", " "))}</span>'
+                    f'<span class="ev {cls.get(e["event"], "")}">{LEARN_LABELS.get(e["event"], e["event"])}</span>'
+                    f'<span>{html.escape(e["title"][:100])}{link}<br><small>{html.escape(e["detail"][:140])}</small></span></li>')
+    head = (f'Сегодня автоматических исследований: <span class="num">{_kb()["db"].events_today(username)}</span> '
+            f'из <span class="num">{cfg["daily_jobs"]}</span>.')
+    body = f'<ul class="chelsy-journal">{"".join(rows)}</ul>' if rows else \
+        '<p class="chelsy-note">Пока пусто. Chelsy начнёт изучать источники после ответов с поиском в интернете.</p>'
+    lines = [head + body]
     return ('\n'.join(lines), cfg['enabled'], cfg['from_search'], cfg['curiosity'], cfg['daily_jobs'], cfg['min_trust'])
 
 
@@ -517,7 +531,7 @@ def learning_save(enabled, from_search, curiosity, daily, min_trust, request: gr
         raise gr.Error('Настройки автоизучения меняет владелец.')
     autolearn.save_settings({'enabled': bool(enabled), 'from_search': bool(from_search), 'curiosity': bool(curiosity),
                              'daily_jobs': int(daily), 'min_trust': float(min_trust)})
-    return '✅ Настройки автоизучения сохранены.'
+    return 'Настройки автоизучения сохранены.'
 
 
 def knowledge_archive(doc_id, request: gr.Request):
@@ -531,7 +545,7 @@ def knowledge_archive(doc_id, request: gr.Request):
     if doc['scope'] == 'shared' and not owner(request):
         return 'Общие документы архивирует владелец.'
     _kb()['db'].archive_document(doc['id'], doc['scope'])
-    return '🗄 Документ скрыт из поиска; текст сохранён в истории версий.'
+    return 'Документ скрыт из поиска; текст сохранён в истории версий.'
 
 
 # ------------------------------------------------------------------ memory (0.9.2 API kept)
@@ -563,7 +577,7 @@ def memory_delete(memory_key, request: gr.Request):
         except Exception:
             return 'Не удалось удалить облачную запись; локальная запись сохранена.'
     delete_personal_fact(username, key)
-    return '✅ Запись удалена. Нажми «Обновить».'
+    return 'Запись удалена. Нажми «Обновить».'
 
 
 def save_memory_form(memory_key, memory_value, request: gr.Request):
@@ -580,7 +594,7 @@ def save_memory_form(memory_key, memory_value, request: gr.Request):
             save_memory(username[3:], token, key, value)
         except Exception:
             return 'Сохранено локально, облако пока недоступно.', '', '', memory_list(request)
-    return '✅ Сохранено в твою личную память.', '', '', memory_list(request)
+    return 'Сохранено в твою личную память.', '', '', memory_list(request)
 
 
 # ------------------------------------------------------------------ settings
@@ -603,7 +617,7 @@ def settings_save(model, temperature, top_p, num_ctx, num_predict, repeat_penalt
         'use_knowledge': use_knowledge}))
     core.set_setting(username, 'web_search', bool(web))
     core.set_setting(username, 'training_consent', bool(consent))
-    return '✅ Настройки сохранены.', gr.update(value=bool(web))
+    return 'Настройки сохранены.', gr.update(value=bool(web))
 
 
 def models_md():
@@ -612,7 +626,7 @@ def models_md():
     lines = ['**Установлены:** ' + (', '.join(f'`{m}`' for m in installed) if installed else 'нет (Ollama не запущена?)'), '',
              '**Рекомендации для качественных ответов:**']
     for r in ollama_client.RECOMMENDED:
-        mark = '✅' if r['name'] in installed else '⬇️'
+        mark = 'установлена' if r['name'] in installed else 'не установлена'
         lines.append(f'- {mark} `{r["name"]}` — ~{r["ram_gb"]} ГБ RAM. {r["note"]}')
     lines.append('\nУстановка: `ollama pull qwen3:8b`. Для семантического поиска по базе знаний: `ollama pull nomic-embed-text`.')
     return '\n'.join(lines)
@@ -659,15 +673,19 @@ def seed(url, request: gr.Request):
     if not owner(request):
         raise gr.Error('Исследованиями может управлять только владелец.')
     try:
-        return f'✅ Добавлено в очередь: {add_seed(url)}'
+        return f'Добавлено в очередь: {add_seed(url)}'
     except ValueError as exc:
-        return f'❌ {exc}'
+        return f'Не получилось: {exc}'
 
 
 CSS = r'''
+/* Chelsy AI 0.9.3 · "Northern lights": polar-night ground, two tonal lifts, the aurora
+   (violet → lavender → turquoise) only where Chelsy works or the user acts. */
 :root, .dark {
-  --chelsy-bg:#0B0C20; --chelsy-panel:#11132B; --chelsy-panel-2:#161937; --chelsy-stroke:#262A52;
-  --chelsy-violet:#6D4AFF; --chelsy-lavender:#A78BFA; --chelsy-teal:#21D9DA; --chelsy-text:#ECEBFA; --chelsy-muted:#A3A6C8;
+  --chelsy-bg:#0B0C20; --chelsy-panel:#11132B; --chelsy-panel-2:#161937; --chelsy-raised:#1C2046;
+  --chelsy-selected:#2A2160; --chelsy-stroke:#262A52; --chelsy-violet:#6D4AFF; --chelsy-lavender:#A78BFA;
+  --chelsy-teal:#21D9DA; --chelsy-text:#ECEBFA; --chelsy-muted:#A3A6C8; --chelsy-danger:#FF8A65;
+  --chelsy-aurora:linear-gradient(90deg,#6D4AFF,#A78BFA 50%,#21D9DA);
   --body-background-fill:#0B0C20; --background-fill-primary:#0B0C20; --background-fill-secondary:#11132B;
   --block-background-fill:#11132B; --block-border-color:#262A52; --border-color-primary:#262A52;
   --input-background-fill:#161937; --body-text-color:#ECEBFA; --body-text-color-subdued:#A3A6C8;
@@ -676,88 +694,124 @@ CSS = r'''
   --link-text-color:#A78BFA; --link-text-color-hover:#21D9DA;
 }
 body, gradio-app, .gradio-container { background:var(--chelsy-bg) !important; color:var(--chelsy-text) !important;
-  font-family:Inter, 'Segoe UI', system-ui, -apple-system, sans-serif !important; }
+  font-family:'Segoe UI Variable Text','Segoe UI', system-ui, -apple-system, sans-serif !important;
+  caret-color:var(--chelsy-lavender); }
 .gradio-container { max-width:100% !important; padding:0 !important; }
 footer { display:none !important; }
+::selection { background:#6D4AFF73; color:#fff; }
+* { scrollbar-width:thin; scrollbar-color:#2A2160 transparent; }
+::-webkit-scrollbar { width:10px; height:10px; } ::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:#2A2160; border-radius:10px; border:3px solid var(--chelsy-bg); }
+.num, .chelsy-date { font-variant-numeric:tabular-nums; color:var(--chelsy-teal); }
 /* sidebar */
 .sidebar { background:var(--chelsy-panel) !important; border-right:1px solid var(--chelsy-stroke) !important; }
-.chelsy-brand { display:flex; align-items:center; gap:12px; padding:4px 2px 10px; }
-.chelsy-brand-avatar { width:44px; height:44px; border-radius:14px; box-shadow:0 0 0 1px #6D4AFF55, 0 0 18px #6D4AFF33; }
-.chelsy-brand-name { font-weight:700; font-size:18px; letter-spacing:-.3px; }
-.chelsy-brand-sub { font-size:11px; color:var(--chelsy-muted); }
-#chelsy-new { border-radius:12px !important; font-weight:600 !important; }
-.chelsy-section { font-size:11px; font-weight:700; letter-spacing:.08em; color:var(--chelsy-muted); margin:10px 2px 2px; text-transform:uppercase; }
+.chelsy-brand { display:flex; align-items:center; gap:12px; padding:4px 2px 14px; }
+.chelsy-brand-avatar { width:40px; height:40px; border-radius:12px; }
+.chelsy-brand-name { font-weight:650; font-size:18px; letter-spacing:-.2px; }
+.chelsy-brand-sub { font-size:12px; color:var(--chelsy-muted); }
+#chelsy-new { border-radius:12px !important; font-weight:600 !important; min-height:42px; }
+#chelsy-new img { width:18px; height:18px; }
+.chelsy-section { font-size:12.5px; font-weight:600; color:var(--chelsy-muted); margin:14px 4px 4px; }
 .conv-list .wrap { flex-direction:column !important; gap:2px !important; }
-.conv-list label { width:100%; border-radius:10px !important; padding:7px 10px !important; background:transparent !important;
-  border:0 !important; font-size:13px !important; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.conv-list label:hover { background:#1c2046 !important; }
-.conv-list label.selected, .conv-list label:has(input:checked) { background:#2a2160 !important; color:#fff !important; }
+.conv-list label { width:100%; border-radius:10px !important; padding:8px 12px !important; background:transparent !important;
+  border:0 !important; font-size:13.5px !important; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  transition:background .15s ease-out; }
+.conv-list label:hover { background:var(--chelsy-raised) !important; }
+.conv-list label.selected, .conv-list label:has(input:checked) { background:var(--chelsy-selected) !important; color:#fff !important; }
 .conv-list input { display:none !important; }
 .conv-list { max-height:34vh; overflow-y:auto; }
-.chelsy-nav button { justify-content:flex-start !important; background:transparent !important; border:0 !important;
-  border-radius:10px !important; font-weight:500 !important; color:var(--chelsy-text) !important; }
-.chelsy-nav button:hover { background:#1c2046 !important; }
-.chelsy-profile { display:flex; align-items:center; gap:10px; padding:10px; border-radius:12px; background:var(--chelsy-panel-2); margin-top:8px; }
-.chelsy-profile .avatar { width:32px; height:32px; border-radius:50%; display:grid; place-items:center; font-weight:700;
-  background:linear-gradient(135deg,#6D4AFF,#21D9DA); color:#fff; }
-.chelsy-profile .name { font-size:13px; max-width:150px; overflow:hidden; text-overflow:ellipsis; }
-.chelsy-profile .role { font-size:11px; color:var(--chelsy-muted); }
-.chelsy-profile .logout { margin-left:auto; color:var(--chelsy-muted); text-decoration:none; font-size:18px; }
+.chelsy-fav-list label { color:var(--chelsy-lavender) !important; }
+.chelsy-nav { gap:2px !important; }
+.chelsy-nav button { justify-content:flex-start !important; gap:10px !important; background:transparent !important; border:0 !important;
+  border-radius:10px !important; font-weight:500 !important; color:var(--chelsy-text) !important; min-height:38px;
+  transition:background .15s ease-out; }
+.chelsy-nav button img { width:18px; height:18px; opacity:.9; }
+.chelsy-nav button:hover { background:var(--chelsy-raised) !important; }
+.chelsy-profile { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px; background:var(--chelsy-panel-2); margin-top:10px; }
+.chelsy-profile .avatar { width:30px; height:30px; border-radius:50%; display:grid; place-items:center; font-weight:650;
+  background:var(--chelsy-violet); color:#fff; flex:none; }
+.chelsy-profile .name { font-size:13px; max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chelsy-profile .role { font-size:11.5px; color:var(--chelsy-muted); }
+.chelsy-profile .logout { margin-left:auto; color:var(--chelsy-lavender); text-decoration:none; font-size:13px; }
+.chelsy-profile .logout:hover { color:var(--chelsy-text); }
 /* main */
-#chelsy-main { padding:10px clamp(10px, 3vw, 42px) 8px !important; max-width:1180px; margin:0 auto; width:100%; }
-#chelsy-topbar { align-items:center; gap:8px; border-bottom:1px solid var(--chelsy-stroke); padding-bottom:6px; }
-.chelsy-conv-title { font-weight:600; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.chelsy-conv-title .fav { color:#ffd166; }
-#chelsy-topbar button { min-width:0 !important; }
+#chelsy-main { padding:12px clamp(10px, 3vw, 42px) 10px !important; max-width:1080px; margin:0 auto; width:100%; }
+#chelsy-topbar { align-items:center; gap:8px; padding-bottom:6px; }
+.chelsy-conv-title { font-weight:600; font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.chelsy-conv-title .fav { font-size:12px; font-weight:500; color:var(--chelsy-lavender); margin-left:8px; }
+button.chelsy-flat, .chelsy-flat button { background:transparent !important; border:0 !important; box-shadow:none !important;
+  color:var(--chelsy-lavender) !important; font-weight:500 !important; }
+button.chelsy-flat:hover, .chelsy-flat button:hover { background:var(--chelsy-panel) !important; color:var(--chelsy-text) !important; }
 #chelsy-chat { border:0 !important; background:transparent !important; }
-#chelsy-chat .message { font-size:15px; line-height:1.62; }
-#chelsy-chat .message-row.user-row .message, #chelsy-chat .user { background:#231d4f !important; border:1px solid #3a2f7d !important; }
+#chelsy-chat .message { font-size:15.5px; line-height:1.62; }
+#chelsy-chat .message-row.user-row .message, #chelsy-chat .user { background:#231d4f !important; border:0 !important;
+  border-radius:20px 20px 6px 20px !important; }
 #chelsy-chat .message-row.bot-row .message, #chelsy-chat .bot { background:transparent !important; border:0 !important; }
-#chelsy-chat pre, #chelsy-chat .code_wrap pre { border:1px solid var(--chelsy-stroke); border-radius:10px; background:#0E1029 !important; color:#E6E3FF !important; }
-#chelsy-chat code { background:#1A1D40; color:#E6E3FF; }
-#chelsy-compose .submit-button { background:#6D4AFF !important; color:#fff !important; border-radius:12px !important; }
-#chelsy-compose .stop-button { background:#3A1630 !important; color:#FFD7E4 !important; border-radius:12px !important; }
+#chelsy-chat pre, #chelsy-chat .code_wrap pre { border:1px solid var(--chelsy-stroke); border-radius:12px; background:#0E1029 !important; color:var(--chelsy-text) !important; }
+#chelsy-chat code { background:var(--chelsy-raised); color:var(--chelsy-text); border-radius:5px; }
+#chelsy-chat a { color:var(--chelsy-lavender); text-underline-offset:3px; }
+#chelsy-chat a:hover { color:var(--chelsy-teal); }
+/* composer + the aurora horizon (signature move) */
+#chelsy-compose { position:relative; border:1px solid var(--chelsy-stroke) !important; border-radius:20px !important;
+  background:var(--chelsy-panel-2) !important; box-shadow:0 10px 30px -12px #00000099 !important; overflow:hidden; }
+#chelsy-compose::before { content:''; position:absolute; left:0; right:0; top:0; height:3px; z-index:2;
+  background:var(--chelsy-aurora); background-size:200% 100%; opacity:.4; transition:opacity .2s ease-out; }
+#chelsy-compose:focus-within { border-color:#3D3680 !important; }
+body:has(.pulse-generating) #chelsy-compose::before, body:has(.pulse-checking) #chelsy-compose::before {
+  opacity:1; background-image:linear-gradient(90deg,#6D4AFF,#A78BFA,#21D9DA,#A78BFA,#6D4AFF); animation:chelsy-drift 2.4s linear infinite; }
+body:has(.pulse-searching) #chelsy-compose::before { opacity:1;
+  background:linear-gradient(90deg,#21D9DA26 0%,#21D9DA 50%,#21D9DA26 100%); background-size:50% 100%; background-repeat:no-repeat;
+  background-color:#21D9DA26; animation:chelsy-sweep 1.6s ease-in-out infinite; }
+body:has(.pulse-syncing) #chelsy-compose::before { background:var(--chelsy-lavender); animation:chelsy-breathe 1.6s ease-in-out infinite; }
+body:has(.pulse-offline) #chelsy-compose::before { background:var(--chelsy-danger); opacity:.85; animation:none; }
+@keyframes chelsy-drift { to { background-position:-200% 0; } }
+@keyframes chelsy-sweep { 0% { background-position:-60% 0; } 100% { background-position:160% 0; } }
+#chelsy-compose textarea { font-size:15.5px !important; line-height:1.5 !important; }
+#chelsy-compose .submit-button { background:var(--chelsy-violet) !important; color:#fff !important; border-radius:12px !important; }
+#chelsy-compose .stop-button { background:var(--chelsy-raised) !important; color:var(--chelsy-danger) !important; border-radius:12px !important; }
 #chelsy-compose .upload-button { color:var(--chelsy-lavender) !important; }
-#chelsy-topbar button { background:#1A1D40 !important; color:#E6E3FF !important; border:1px solid #2E3366 !important; max-width:44px; }
-#chelsy-chat a { color:var(--chelsy-lavender); }
-#chelsy-compose { border:1px solid #3a3474 !important; border-radius:18px !important; background:var(--chelsy-panel-2) !important;
-  box-shadow:0 8px 32px #6D4AFF14 !important; }
-#chelsy-compose:focus-within { border-color:var(--chelsy-violet) !important; box-shadow:0 0 0 3px #6D4AFF33 !important; }
-#chelsy-compose textarea { font-size:15px !important; line-height:1.5 !important; }
 #chelsy-options { align-items:center; gap:10px; }
-#chelsy-options .hint { font-size:12px; color:var(--chelsy-muted); }
-.chelsy-welcome { text-align:center; padding:48px 10px 10px; color:var(--chelsy-muted); }
-.chelsy-welcome img { width:72px; height:72px; border-radius:22px; box-shadow:0 0 28px #6D4AFF44; }
-.chelsy-welcome h2 { color:var(--chelsy-text); margin:14px 0 6px; font-size:24px; }
-/* Chelsy Pulse */
-.chelsy-pulse-row { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--chelsy-muted); flex-wrap:wrap; }
+#chelsy-options .hint { font-size:12px; color:var(--chelsy-muted); display:block; line-height:1.4; }
+#chelsy-options > div:last-child { flex:2 1 280px !important; min-width:220px !important; }
+.chelsy-welcome { text-align:center; padding:40px 10px 6px; color:var(--chelsy-muted); }
+.chelsy-welcome img { width:68px; height:68px; border-radius:20px; }
+.chelsy-welcome h2 { color:var(--chelsy-text); margin:16px 0 6px; font-size:24px; font-weight:600; }
+.chelsy-welcome p { max-width:46ch; margin:0 auto; line-height:1.5; }
+.chelsy-horizon { width:180px; height:2px; margin:18px auto 0; border-radius:2px; background:var(--chelsy-aurora); opacity:.45; }
+/* Chelsy Pulse (state dot in the top bar) */
+.chelsy-pulse-row { display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--chelsy-muted); white-space:nowrap; }
 .chelsy-pulse { position:relative; width:12px; height:12px; display:inline-block; }
 .chelsy-pulse i { position:absolute; inset:2px; border-radius:50%; background:var(--pc); }
 .chelsy-pulse::after { content:''; position:absolute; inset:0; border-radius:50%; border:2px solid var(--pc); opacity:.0; }
 .pulse-ready { --pc:#21D9DA; } .pulse-generating { --pc:#A78BFA; } .pulse-checking { --pc:#A78BFA; }
-.pulse-searching { --pc:#21D9DA; } .pulse-syncing { --pc:#6D4AFF; } .pulse-offline { --pc:#ff8a65; }
-.pulse-generating::after, .pulse-checking::after, .pulse-searching::after, .pulse-syncing::after { animation:chelsy-ring 1.6s ease-out infinite; }
-.pulse-ready i { animation:chelsy-breathe 4s ease-in-out infinite; }
+.pulse-searching { --pc:#21D9DA; } .pulse-syncing { --pc:#A78BFA; } .pulse-offline { --pc:#ff8a65; }
+.pulse-generating::after, .pulse-checking::after, .pulse-searching::after, .pulse-syncing::after { animation:chelsy-ring 1.6s cubic-bezier(.16,1,.3,1) infinite; }
 @keyframes chelsy-ring { 0% { transform:scale(.6); opacity:.9 } 100% { transform:scale(1.9); opacity:0 } }
-@keyframes chelsy-breathe { 50% { opacity:.55 } }
-.pulse-meta { margin-left:6px; opacity:.85; }
+@keyframes chelsy-breathe { 50% { opacity:.45 } }
+.pulse-meta { margin-left:4px; }
 /* pages */
-.chelsy-page h2 { font-size:22px; margin:6px 0 4px; }
-.chelsy-note { font-size:12.5px; color:var(--chelsy-muted); margin:4px 0; }
-.chelsy-progress { height:6px; background:#1c2046; border-radius:6px; overflow:hidden; margin:6px 0; }
-.chelsy-progress div { height:100%; background:linear-gradient(90deg,#6D4AFF,#21D9DA); transition:width .4s; }
-.chelsy-card { background:var(--chelsy-panel); border:1px solid var(--chelsy-stroke); border-radius:14px; padding:14px; }
+.chelsy-page h2 { font-size:22px; font-weight:600; margin:8px 0 4px; }
+.chelsy-note { font-size:13px; color:var(--chelsy-muted); margin:4px 0 10px; max-width:75ch; line-height:1.5; }
+.chelsy-progress { height:4px; background:var(--chelsy-raised); border-radius:4px; overflow:hidden; margin:8px 0; }
+.chelsy-progress div { height:100%; background:var(--chelsy-aurora); transition:width .4s cubic-bezier(.16,1,.3,1); }
+.chelsy-journal { list-style:none; padding:0; margin:6px 0; }
+.chelsy-journal li { display:grid; grid-template-columns:9.5em 11em 1fr; gap:10px; padding:7px 0; border-bottom:1px solid var(--chelsy-stroke); font-size:13.5px; }
+.chelsy-journal .ev { color:var(--chelsy-lavender); } .chelsy-journal .ev.ok { color:var(--chelsy-teal); } .chelsy-journal .ev.warn { color:var(--chelsy-danger); }
+.chelsy-journal small { color:var(--chelsy-muted); }
 button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible { outline:2px solid var(--chelsy-teal) !important; outline-offset:2px; }
 @media (max-width: 760px) {
   #chelsy-main { padding:6px 8px !important; }
-  #chelsy-chat .message { font-size:14.5px; }
-  .chelsy-welcome { padding-top:22px; }
+  #chelsy-chat .message { font-size:15px; }
+  .chelsy-welcome { padding-top:20px; }
   #chelsy-options .hint { display:none; }
   #chelsy-topbar .pulse-label, #chelsy-topbar .pulse-meta { display:none; }
   #chelsy-topbar { flex-wrap:nowrap !important; }
   #chelsy-topbar > div:first-child { min-width:0 !important; }
+  .chelsy-journal li { grid-template-columns:1fr; gap:2px; }
 }
-@media (prefers-reduced-motion: reduce) { .chelsy-pulse::after, .chelsy-pulse i, .chelsy-progress div { animation:none !important; transition:none !important; } }
+@media (prefers-reduced-motion: reduce) {
+  .chelsy-pulse::after, .chelsy-pulse i, .chelsy-progress div, #chelsy-compose::before { animation:none !important; transition:none !important; }
+}
 '''
 
 FORCE_DARK_JS = '''() => {
@@ -781,46 +835,49 @@ def build():
         message_ids = gr.State([])
         with gr.Sidebar(open=True, width=292, elem_id='chelsy-sidebar'):
             gr.HTML(brand_header_html())
-            new_btn = gr.Button('＋  Новый чат', variant='primary', elem_id='chelsy-new')
-            history_search = gr.Textbox(placeholder='🔍 Поиск по истории…', show_label=False, container=False,
+            new_btn = gr.Button('Новый чат', variant='primary', elem_id='chelsy-new', icon=str(asset_path('icons/plus.svg')))
+            history_search = gr.Textbox(placeholder='Поиск по истории', show_label=False, container=False,
                                         elem_id='chelsy-search')
             gr.HTML('<div class="chelsy-section">Избранное</div>')
-            favorites = gr.Radio(choices=[], show_label=False, container=False, elem_classes='conv-list')
+            favorites = gr.Radio(choices=[], show_label=False, container=False, elem_classes=['conv-list', 'chelsy-fav-list'])
             gr.HTML('<div class="chelsy-section">Недавние</div>')
             recent = gr.Radio(choices=[], show_label=False, container=False, elem_classes='conv-list')
             gr.HTML('<div class="chelsy-section">Разделы</div>')
             with gr.Column(elem_classes='chelsy-nav'):
-                nav_buttons = [gr.Button(label, size='sm') for label in SECTIONS]
+                icons = ['chat', 'research', 'memory', 'knowledge', 'settings']
+                nav_buttons = [gr.Button(label, size='sm', icon=str(asset_path(f'icons/{icon}.svg')))
+                               for label, icon in zip(SECTIONS, icons)]
             profile = gr.HTML()
         with gr.Column(elem_id='chelsy-main'):
             with gr.Row(elem_id='chelsy-topbar'):
                 title = gr.HTML(title_html(None, None), scale=4)
                 pulse = gr.HTML(pulse_html('ready'), scale=3, elem_id='chelsy-pulse-box')
-                fav_btn = gr.Button('☆', size='sm', scale=0, min_width=40)
-                sync_btn = gr.Button('⟳', size='sm', scale=0, min_width=40)
+                fav_btn = gr.Button('В избранное', size='sm', scale=0, min_width=120, elem_classes='chelsy-flat')
+                sync_btn = gr.Button('Синхронизировать', size='sm', scale=0, min_width=150, elem_classes='chelsy-flat')
             with gr.Column(visible=True, elem_classes='chelsy-page') as chat_page:
                 chatbot = gr.Chatbot(elem_id='chelsy-chat', show_label=False, height='68vh', editable='user',
                                      buttons=['copy', 'copy_all'], feedback_options=('Like', 'Dislike'),
                                      avatar_images=(None, str(asset_path('chelsy_logo_small.png'))),
                                      placeholder=welcome_html(), allow_tags=False, layout='bubble',
+                                     examples=[{'text': t} for t in EXAMPLES],
                                      latex_delimiters=[{'left': '$$', 'right': '$$', 'display': True}])
                 composer = gr.MultimodalTextbox(placeholder='Спроси Chelsy о чём угодно…',
                                                 show_label=False, file_types=TEXT_TYPES, file_count='multiple',
-                                                lines=1, max_lines=12, submit_btn='➤', stop_btn='■', elem_id='chelsy-compose',
+                                                lines=1, max_lines=12, submit_btn=True, stop_btn=True, elem_id='chelsy-compose',
                                                 sources=['upload'])
                 with gr.Row(elem_id='chelsy-options'):
                     model = gr.Dropdown(model_choices(), value=None, label='Модель', container=False, scale=2,
                                         min_width=160, allow_custom_value=False)
-                    web = gr.Checkbox(value=True, label='🌐 Поиск в интернете', container=False, scale=1, min_width=170)
-                    regen_btn = gr.Button('↻ Повторить ответ', size='sm', scale=0, min_width=150)
-                    gr.HTML('<span class="hint">Enter — отправить, Shift+Enter — новая строка. Ответы могут содержать ошибки — проверяй важное.</span>')
+                    web = gr.Checkbox(value=True, label='Поиск в интернете', container=False, scale=1, min_width=170)
+                    regen_btn = gr.Button('Повторить ответ', size='sm', scale=0, min_width=150, elem_classes='chelsy-flat')
+                    gr.HTML('<span class="hint">Enter — отправить, Shift+Enter — новая строка. Ответы могут ошибаться — проверяй важное.</span>', scale=2, min_width=260)
                 with gr.Accordion('Переименовать или удалить чат', open=False):
                     with gr.Row():
                         new_title = gr.Textbox(placeholder='Новое название', show_label=False, scale=4)
                         rename_btn = gr.Button('Переименовать', scale=1)
-                        delete_btn = gr.Button('🗑 Удалить чат', variant='stop', scale=1)
+                        delete_btn = gr.Button('Удалить чат', variant='stop', scale=1)
             with gr.Column(visible=False, elem_classes='chelsy-page') as research_page:
-                gr.HTML('<h2>🔎 Исследования</h2><div class="chelsy-note">Chelsy читает открытые источники с соблюдением '
+                gr.HTML('<h2>Исследования</h2><div class="chelsy-note">Chelsy читает открытые источники с соблюдением '
                         'robots.txt и ограничений частоты. Найденное попадает в базу знаний только после твоего решения. '
                         'Это пополнение базы знаний (RAG), а не переобучение модели.</div>')
                 with gr.Row():
@@ -835,16 +892,16 @@ def build():
                                           interactive=False, wrap=True, label='Задачи')
                 with gr.Row():
                     job_pick = gr.Dropdown(choices=[], label='Открыть исследование', scale=3)
-                    stop_job_btn = gr.Button('⏹ Остановить', scale=1)
-                    refresh_jobs = gr.Button('↻ Обновить', scale=1)
+                    stop_job_btn = gr.Button('Остановить', scale=1)
+                    refresh_jobs = gr.Button('Обновить', scale=1)
                 job_head = gr.HTML()
                 items_table = gr.Dataframe(headers=['#', 'Статус', 'Доверие', 'Дата', 'Заголовок', 'Ссылка', 'Проверка'],
                                            interactive=False, wrap=True, label='Найденные материалы')
                 item_pick = gr.CheckboxGroup(choices=[], label='Выбери материалы для решения')
                 with gr.Row():
-                    accept_personal = gr.Button('➕ В личную базу', variant='primary')
-                    accept_shared = gr.Button('➕ В общую базу (владелец)')
-                    reject_btn = gr.Button('✖ Отклонить')
+                    accept_personal = gr.Button('В личную базу', variant='primary')
+                    accept_shared = gr.Button('В общую базу (владелец)')
+                    reject_btn = gr.Button('Отклонить')
                 review_msg = gr.Markdown()
                 with gr.Accordion('Автономные исследования и разрешённые источники (владелец)', open=False):
                     gr.Markdown('Периодические задачи работают только по **разрешённым доменам**, пока запущен Host или Desktop.')
@@ -861,26 +918,26 @@ def build():
                     source_list = gr.Markdown()
                 research_timer = gr.Timer(4, active=False)
             with gr.Column(visible=False, elem_classes='chelsy-page') as memory_page:
-                gr.HTML('<h2>💾 Личная память</h2><div class="chelsy-note">Записи принадлежат только твоему аккаунту '
+                gr.HTML('<h2>Личная память</h2><div class="chelsy-note">Записи принадлежат только твоему аккаунту '
                         'и синхронизируются через Supabase. В чате: «Запомни: любимая игра = шахматы».</div>')
                 with gr.Row():
                     new_key = gr.Textbox(label='Что запомнить?', placeholder='Название проекта', scale=2)
                     new_value = gr.Textbox(label='Значение', placeholder='Chelsy AI', scale=3)
-                    save_fact = gr.Button('💜 Сохранить', variant='primary', scale=1)
+                    save_fact = gr.Button('Сохранить', variant='primary', scale=1)
                 save_fact_status = gr.Markdown()
                 memories = gr.Markdown()
                 with gr.Row():
                     memory_key = gr.Textbox(label='Ключ записи для удаления', placeholder='любимая игра', scale=3)
                     remove_memory = gr.Button('Удалить запись', variant='stop', scale=1)
-                    refresh_memory = gr.Button('↻ Обновить', scale=1)
+                    refresh_memory = gr.Button('Обновить', scale=1)
                 memory_status = gr.Markdown()
             with gr.Column(visible=False, elem_classes='chelsy-page') as knowledge_page:
-                gr.HTML('<h2>📚 База знаний</h2><div class="chelsy-note">Документы, которые Chelsy использует в ответах. '
+                gr.HTML('<h2>База знаний</h2><div class="chelsy-note">Документы, которые Chelsy использует в ответах. '
                         'Обновления сохраняют прошлые версии; удаление — это архивирование.</div>')
                 with gr.Row():
                     kb_query = gr.Textbox(label='Фильтр', placeholder='Название, тема или адрес', scale=3)
                     kb_scope = gr.Radio(['Все', 'Личная', 'Общая'], value='Все', label='База', scale=2)
-                    kb_refresh = gr.Button('↻ Показать', scale=1)
+                    kb_refresh = gr.Button('Показать', scale=1)
                 kb_summary = gr.Markdown()
                 kb_table = gr.Dataframe(headers=['ID', 'База', 'Заголовок', 'Опубликовано', 'Получено', 'Доверие', 'Версия', 'Ссылка'],
                                         interactive=False, wrap=True)
@@ -888,13 +945,13 @@ def build():
                     kb_search = gr.Textbox(label='Проверить поиск по базе', placeholder='О чём спросить базу?', scale=4)
                     kb_search_btn = gr.Button('Найти', scale=1)
                 kb_results = gr.Markdown()
-                gr.Markdown('### ⚖️ Возможные противоречия между источниками')
+                gr.Markdown('### Возможные противоречия между источниками')
                 kb_conflicts = gr.Markdown()
                 with gr.Row():
                     kb_doc = gr.Number(label='ID документа', precision=0, scale=2)
-                    kb_archive_btn = gr.Button('🗄 Архивировать', scale=1)
+                    kb_archive_btn = gr.Button('Архивировать', scale=1)
                 kb_archive_msg = gr.Markdown()
-                with gr.Accordion('🧠 Автоизучение интернета — журнал и настройки', open=True):
+                with gr.Accordion('Автоизучение интернета — журнал и настройки', open=True):
                     gr.Markdown('Chelsy сама сохраняет **надёжные** источники своих поисков и изучает темы, которых '
                                 'нет в базе знаний. Сомнительные страницы и страницы с инструкциями для ИИ остаются '
                                 'на проверку в «Исследованиях». Это пополнение базы знаний, а не переобучение модели.')
@@ -907,10 +964,10 @@ def build():
                         learn_trust = gr.Slider(0.3, 1.0, value=0.5, step=0.05, label='Минимальная надёжность источника')
                         learn_save = gr.Button('Сохранить (владелец)', scale=0, min_width=170)
                     learn_msg = gr.Markdown()
-                    learn_refresh = gr.Button('↻ Обновить журнал', size='sm')
-                    learn_journal = gr.Markdown()
+                    learn_refresh = gr.Button('Обновить журнал', size='sm')
+                    learn_journal = gr.HTML()
             with gr.Column(visible=False, elem_classes='chelsy-page') as settings_page:
-                gr.HTML('<h2>⚙️ Настройки</h2>')
+                gr.HTML('<h2>Настройки</h2>')
                 with gr.Row():
                     with gr.Column():
                         gr.Markdown('#### Генерация')
@@ -924,13 +981,13 @@ def build():
                         use_memory = gr.Checkbox(value=True, label='Учитывать личную память')
                         use_knowledge = gr.Checkbox(value=True, label='Использовать базу знаний')
                         web_default = gr.Checkbox(value=True, label='Поиск в интернете по умолчанию')
-                        consent = gr.Checkbox(value=False, label='Разрешить использовать оценённые 👍 ответы для будущего дообучения')
+                        consent = gr.Checkbox(value=False, label='Разрешить использовать положительно оценённые ответы для будущего дообучения')
                         save_settings = gr.Button('Сохранить настройки', variant='primary')
                         settings_msg = gr.Markdown()
                 gr.Markdown('#### Модели')
                 models_info = gr.Markdown()
                 with gr.Row():
-                    eval_btn = gr.Button('🧪 Оценить установленные модели (владелец)')
+                    eval_btn = gr.Button('Оценить установленные модели (владелец)')
                     eval_show = gr.Button('Показать результат')
                 eval_msg = gr.Markdown()
                 gr.Markdown('''#### Подключения и безопасность
@@ -946,19 +1003,21 @@ def build():
 
         chat_outputs = [chatbot, message_ids, pulse]
         submit = composer.submit(send, inputs=[composer, conversation, model, web],
-                                 outputs=chat_outputs + [conversation, composer], api_name=False, concurrency_limit=1)
+                                 outputs=chat_outputs + [conversation, composer], api_name=False, concurrency_limit=1,
+                                 show_progress='hidden')  # Chelsy Pulse + the aurora horizon show progress
         submit.then(refresh_lists, inputs=[history_search, conversation], outputs=[favorites, recent], api_name=False) \
               .then(title_html_req, inputs=[conversation], outputs=[title], api_name=False)
         composer.stop(stop_generation, outputs=[pulse], api_name=False, queue=False)
         chatbot.retry(regenerate, inputs=[conversation, model, web, message_ids], outputs=chat_outputs, api_name=False,
-                      concurrency_limit=1)
+                      concurrency_limit=1, show_progress='hidden')
         regen_btn.click(regenerate, inputs=[conversation, model, web, message_ids], outputs=chat_outputs, api_name=False,
-                        concurrency_limit=1)
+                        concurrency_limit=1, show_progress='hidden')
         chatbot.edit(edit_message, inputs=[conversation, model, web, message_ids], outputs=chat_outputs, api_name=False,
-                     concurrency_limit=1)
+                     concurrency_limit=1, show_progress='hidden')
         chatbot.like(rate, inputs=[message_ids], outputs=None, api_name=False)
         new_btn.click(new_chat, outputs=[conversation, chatbot, message_ids, title, favorites, recent, composer],
                       api_name=False).then(lambda: navigate(SECTIONS[0]), outputs=pages_, api_name=False)
+        chatbot.example_select(fill_example, outputs=[composer], api_name=False)
         chatbot.clear(new_chat, outputs=[conversation, chatbot, message_ids, title, favorites, recent, composer], api_name=False)
         for lst in (favorites, recent):
             lst.input(open_conversation, inputs=[lst], outputs=[conversation, chatbot, message_ids, title], api_name=False) \

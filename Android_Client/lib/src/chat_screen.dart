@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'api.dart';
+import 'aurora.dart';
 import 'local_store.dart';
 import 'logic.dart';
 import 'message_view.dart';
@@ -466,10 +467,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     Widget tile(Conversation c) => ListTile(
           dense: true,
           selected: c.id == _conversationId,
-          selectedTileColor: const Color(0xFF2A2160),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           title: Text(c.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-          leading: c.favorite ? const Icon(Icons.star_rounded, size: 18, color: Color(0xFFFFD166)) : null,
+          leading: c.favorite ? const Icon(Icons.star_rounded, size: 18, color: ChelsyColors.lavender) : null,
           onTap: () {
             close();
             _open(c);
@@ -563,43 +562,60 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            decoration: BoxDecoration(
+          ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: ColoredBox(
               color: ChelsyColors.panel2,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFF3A3474)),
-            ),
-            padding: const EdgeInsets.only(left: 14, right: 6),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Expanded(
-                child: TextField(
-                  controller: _input,
-                  enabled: !disabled,
-                  minLines: 1,
-                  maxLines: 6,
-                  textInputAction: TextInputAction.newline,
-                  decoration: InputDecoration(
-                    hintText: disabled ? 'Хост недоступен' : 'Спроси Chelsy…',
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    filled: false,
-                  ),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                // Signature: the aurora horizon tells Chelsy's state at a glance.
+                AuroraBand(state: _offline ? PulseState.offline : _pulse),
+                Padding(
+                  padding: const EdgeInsets.only(left: 16, right: 6, top: 2, bottom: 2),
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _input,
+                        enabled: !disabled,
+                        minLines: 1,
+                        maxLines: 6,
+                        style: const TextStyle(fontSize: 16, color: ChelsyColors.text, height: 1.4),
+                        textInputAction: TextInputAction.newline,
+                        decoration: InputDecoration(
+                          hintText: disabled ? 'Хост недоступен' : 'Спроси Chelsy…',
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
+                          filled: false,
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: _generating
+                          ? IconButton.filledTonal(
+                              tooltip: 'Остановить',
+                              onPressed: _stop,
+                              style: IconButton.styleFrom(backgroundColor: ChelsyColors.raised, foregroundColor: ChelsyColors.text),
+                              icon: const Icon(Icons.stop_rounded))
+                          : IconButton.filled(
+                              tooltip: 'Отправить',
+                              onPressed: disabled ? null : () => _send(),
+                              style: IconButton.styleFrom(
+                                  backgroundColor: ChelsyColors.violet,
+                                  foregroundColor: Colors.white,
+                                  disabledBackgroundColor: ChelsyColors.raised,
+                                  disabledForegroundColor: ChelsyColors.muted),
+                              icon: const Icon(Icons.arrow_upward_rounded)),
+                    ),
+                  ]),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: _generating
-                    ? IconButton.filledTonal(
-                        tooltip: 'Остановить', onPressed: _stop, icon: const Icon(Icons.stop_rounded))
-                    : IconButton.filled(
-                        tooltip: 'Отправить', onPressed: disabled ? null : () => _send(), icon: const Icon(Icons.arrow_upward_rounded)),
-              ),
-            ]),
+              ]),
+            ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Row(children: [
             if (_models.isNotEmpty)
               Flexible(
@@ -608,6 +624,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     value: _model,
                     isDense: true,
                     isExpanded: true,
+                    dropdownColor: ChelsyColors.panel2,
+                    icon: const Icon(Icons.expand_more_rounded, size: 18, color: ChelsyColors.muted),
                     style: const TextStyle(fontSize: 13, color: ChelsyColors.muted),
                     items: _models.map((m) => DropdownMenuItem(value: m, child: Text(m))).toList(),
                     onChanged: _generating ? null : (v) => setState(() => _model = v),
@@ -616,9 +634,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               ),
             const SizedBox(width: 8),
             FilterChip(
-              label: const Text('Интернет', style: TextStyle(fontSize: 12)),
-              avatar: const Icon(Icons.public, size: 16),
+              label: const Text('Интернет'),
+              avatar: Icon(Icons.travel_explore_rounded, size: 16, color: _web ? ChelsyColors.teal : ChelsyColors.muted),
+              showCheckmark: false,
               selected: _web,
+              tooltip: _web ? 'Поиск в интернете включён' : 'Поиск в интернете выключен',
               onSelected: (v) async {
                 setState(() => _web = v);
                 (await SharedPreferences.getInstance()).setBool('chelsy_web', v);
@@ -630,6 +650,63 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
+  Widget _emptyState() {
+    const examples = [
+      (Icons.lightbulb_outline_rounded, 'Объясни простыми словами, как работает Wi‑Fi'),
+      (Icons.travel_explore_rounded, 'Найди свежие новости о Python'),
+      (Icons.menu_book_rounded, 'Изучи документацию FastAPI'),
+    ];
+    return LayoutBuilder(
+      builder: (context, box) => SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: box.maxHeight - 48),
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Center(
+              child: ClipRRect(
+                  borderRadius: BorderRadius.circular(22),
+                  child: Image.asset('chelsy_logo.png', width: 72, height: 72, cacheWidth: 216)),
+            ),
+            const SizedBox(height: 18),
+            const Text('Привет! Я Челси 💜',
+                textAlign: TextAlign.center, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            const Text('Спрашивай, проси объяснить, помочь с кодом или изучить тему — я покажу источники и даты.',
+                textAlign: TextAlign.center, style: TextStyle(color: ChelsyColors.muted, height: 1.45)),
+            const SizedBox(height: 20),
+            const Padding(padding: EdgeInsets.symmetric(horizontal: 48), child: AuroraBand(state: PulseState.ready, height: 2)),
+            const SizedBox(height: 20),
+            for (final (icon, text) in examples)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Material(
+                  color: ChelsyColors.panel,
+                  borderRadius: BorderRadius.circular(14),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: _offline || _readOnlyCloud
+                        ? null
+                        : () {
+                            _input.text = text;
+                            _input.selection = TextSelection.collapsed(offset: text.length);
+                          },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                      child: Row(children: [
+                        Icon(icon, size: 20, color: ChelsyColors.lavender),
+                        const SizedBox(width: 12),
+                        Expanded(child: Text(text, style: const TextStyle(fontSize: 14.5))),
+                      ]),
+                    ),
+                  ),
+                ),
+              ),
+          ]),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 900;
@@ -637,7 +714,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final chat = Column(children: [
       if (_offline || _readOnlyCloud)
         MaterialBanner(
-          backgroundColor: const Color(0xFF2A1830),
+          backgroundColor: ChelsyColors.panel,
+          leading: Icon(_readOnlyCloud ? Icons.cloud_off_rounded : Icons.wifi_off_rounded, color: ChelsyColors.danger),
           content: Text(_readOnlyCloud ? _readOnlyLabel : 'Нет связи с Chelsy Host: $_statusText'),
           actions: [
             TextButton(
@@ -651,21 +729,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         ),
       Expanded(
         child: _messages.isEmpty
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    ClipRRect(
-                        borderRadius: BorderRadius.circular(22),
-                        child: Image.asset('chelsy_logo.png', width: 72, height: 72, cacheWidth: 216)),
-                    const SizedBox(height: 14),
-                    const Text('Привет! Я Челси 💜', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 6),
-                    const Text('Спроси что угодно, попроси объяснить, помочь с кодом или исследовать тему.',
-                        textAlign: TextAlign.center, style: TextStyle(color: ChelsyColors.muted)),
-                  ]),
-                ),
-              )
+            ? _emptyState()
             : ListView.builder(
                 controller: _scroll,
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -688,7 +752,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     return Scaffold(
       drawer: wide ? null : Drawer(child: _sidebar(context, inDrawer: true)),
       appBar: AppBar(
-        title: Text(_title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17)),
+        title: Text(_title, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
           Tooltip(
             message: _statusText,
@@ -733,8 +797,7 @@ class _Section extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(8, 12, 8, 4),
-        child: Text(text.toUpperCase(),
-            style: const TextStyle(fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w700, color: ChelsyColors.muted)),
+        padding: const EdgeInsets.fromLTRB(12, 16, 8, 6),
+        child: Text(text, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: ChelsyColors.muted)),
       );
 }

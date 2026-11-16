@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'aurora.dart';
 import 'logic.dart';
 import 'theme.dart';
 
@@ -93,7 +94,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 4),
                   const Text('Войди аккаунтом Chelsy Group', textAlign: TextAlign.center,
                       style: TextStyle(color: ChelsyColors.muted)),
-                  const SizedBox(height: 26),
+                  const SizedBox(height: 20),
+                  const Padding(padding: EdgeInsets.symmetric(horizontal: 72), child: AuroraBand(state: PulseState.ready, height: 2)),
+                  const SizedBox(height: 24),
                   TextField(
                     controller: _host,
                     enabled: !_busy,
@@ -134,7 +137,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 20),
                   FilledButton(
                     onPressed: _busy ? null : _submit,
-                    style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+                    style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
                     child: _busy
                         ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                         : const Text('Войти', style: TextStyle(fontSize: 16)),

@@ -21,6 +21,42 @@ class MessageView extends StatelessWidget {
   final VoidCallback? onRegenerate;
   final void Function(int rating)? onRate;
 
+  /// Markdown styles for Chelsy's answers (public for tests).
+  static MarkdownStyleSheet markdownStyle() {
+    // Built explicitly (not fromTheme): flutter_markdown_plus still targets
+    // the legacy flutter/material ThemeData type.
+    const body = TextStyle(fontSize: 16, height: 1.55, color: ChelsyColors.text);
+    return MarkdownStyleSheet(
+      p: body,
+      listBullet: body,
+      tableBody: body,
+      tableHead: body.copyWith(fontWeight: FontWeight.w600),
+      strong: const TextStyle(fontWeight: FontWeight.w700),
+      em: const TextStyle(fontStyle: FontStyle.italic),
+      h1: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: ChelsyColors.text),
+      h2: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: ChelsyColors.text),
+      h3: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: ChelsyColors.text),
+      blockSpacing: 10,
+      codeblockPadding: const EdgeInsets.all(12),
+
+      // Code is data: monospace, snow on the deepest night (contrast 16:1). The colour is explicit:
+      // without it flutter_markdown_plus falls back to a dark default on this ground.
+      code: const TextStyle(
+          fontFamily: 'monospace', fontSize: 13.5, height: 1.5, color: ChelsyColors.text, backgroundColor: ChelsyColors.raised),
+      codeblockDecoration: BoxDecoration(
+        color: ChelsyColors.codeBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: ChelsyColors.stroke),
+      ),
+      a: const TextStyle(color: ChelsyColors.lavender, decoration: TextDecoration.underline, decorationColor: ChelsyColors.lavender),
+      horizontalRuleDecoration: const BoxDecoration(border: Border(top: BorderSide(color: ChelsyColors.stroke))),
+      blockquoteDecoration: BoxDecoration(
+        color: ChelsyColors.panel2,
+        borderRadius: BorderRadius.circular(8),
+      ),
+    );
+  }
+
   Future<void> _openLink(BuildContext context, String? href) async {
     if (!isSafeLink(href)) return;
     await launchUrl(Uri.parse(href!), mode: LaunchMode.externalApplication);
@@ -38,47 +74,24 @@ class MessageView extends StatelessWidget {
           child: GestureDetector(
             onLongPress: onEdit,
             child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 6),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
+              margin: const EdgeInsets.only(top: 10, bottom: 6, left: 40),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+              decoration: const BoxDecoration(
                 color: ChelsyColors.userBubble,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF3A2F7D)),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(20),
+                  topRight: Radius.circular(20),
+                  bottomLeft: Radius.circular(20),
+                  bottomRight: Radius.circular(6),
+                ),
               ),
-              child: SelectableText(message.content, style: const TextStyle(fontSize: 15, height: 1.45)),
+              child: SelectableText(message.content, style: const TextStyle(fontSize: 16, height: 1.45, color: ChelsyColors.text)),
             ),
           ),
         ),
       );
     }
-    // Built explicitly (not fromTheme): flutter_markdown_plus still targets
-    // the legacy flutter/material ThemeData type.
-    const body = TextStyle(fontSize: 15, height: 1.55, color: ChelsyColors.text);
-    final style = MarkdownStyleSheet(
-      p: body,
-      listBullet: body,
-      tableBody: body,
-      tableHead: body.copyWith(fontWeight: FontWeight.w600),
-      strong: const TextStyle(fontWeight: FontWeight.w700),
-      em: const TextStyle(fontStyle: FontStyle.italic),
-      h1: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: ChelsyColors.text),
-      h2: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: ChelsyColors.text),
-      h3: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: ChelsyColors.text),
-      blockSpacing: 10,
-      codeblockPadding: const EdgeInsets.all(12),
-      horizontalRuleDecoration: const BoxDecoration(border: Border(top: BorderSide(color: ChelsyColors.stroke))),
-      code: const TextStyle(fontFamily: 'monospace', fontSize: 13, backgroundColor: Color(0xFF1A1D40)),
-      codeblockDecoration: BoxDecoration(
-        color: const Color(0xFF0E1029),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: ChelsyColors.stroke),
-      ),
-      a: const TextStyle(color: ChelsyColors.lavender, decoration: TextDecoration.underline),
-      blockquoteDecoration: BoxDecoration(
-        color: ChelsyColors.panel2,
-        borderRadius: BorderRadius.circular(8),
-      ),
-    );
+    final style = markdownStyle();
     return Align(
       alignment: Alignment.centerLeft,
       child: ConstrainedBox(

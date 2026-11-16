@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'dart:io';
 
+import 'package:chelsy_ai_client/src/aurora.dart';
 import 'package:chelsy_ai_client/src/local_store.dart';
 import 'package:chelsy_ai_client/src/logic.dart';
 import 'package:chelsy_ai_client/src/message_view.dart';
@@ -101,5 +102,26 @@ void main() {
     ));
     await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 2));
     expect(find.byType(ChelsyPulse), findsOneWidget);
+  });
+
+  testWidgets('aurora horizon renders every Pulse state and stays still with reduced motion', (tester) async {
+    for (final state in PulseState.values) {
+      await tester.pumpWidget(MediaQuery(
+        data: const MediaQueryData(disableAnimations: true),
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: Center(child: SizedBox(width: 300, child: AuroraBand(state: state))),
+        ),
+      ));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(tester.hasRunningAnimations, isFalse, reason: state.name);
+      expect(find.byType(AuroraBand), findsOneWidget);
+    }
+  });
+
+  test('code blocks in answers use readable snow-on-night text', () {
+    final sheet = MessageView.markdownStyle();
+    expect(sheet.code?.color, ChelsyColors.text);
+    expect((sheet.codeblockDecoration as BoxDecoration).color, ChelsyColors.codeBg);
   });
 }
