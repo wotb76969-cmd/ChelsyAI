@@ -27,7 +27,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 MAX_BACKUPS = 30
 
 
@@ -269,11 +269,102 @@ def _m4_down(conn):
     conn.execute('DROP TABLE IF EXISTS learning_log')
 
 
+def _m5_own_auth(conn):
+    """0.9.4: own accounts, sessions, per-user content keys, two administrators, audit (additive)."""
+    _script(conn, '''
+    CREATE TABLE IF NOT EXISTS accounts (
+        id TEXT PRIMARY KEY,                       -- stable UUID (kept from Supabase on migration)
+        email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        display_name TEXT NOT NULL DEFAULT '',
+        locale TEXT NOT NULL DEFAULT 'ru',
+        timezone TEXT NOT NULL DEFAULT 'Europe/Moscow',
+        role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'blocked', 'deletion_requested')),
+        pw_hash TEXT NOT NULL,
+        pw_changed TEXT NOT NULL,
+        must_change_password INTEGER NOT NULL DEFAULT 0,
+        created TEXT NOT NULL,
+        updated TEXT NOT NULL,
+        last_login TEXT,
+        quotas TEXT NOT NULL DEFAULT '{}',
+        settings TEXT NOT NULL DEFAULT '{}',
+        avatar BLOB,
+        avatar_type TEXT,
+        origin TEXT NOT NULL DEFAULT 'local'        -- local | supabase-import
+    );
+    CREATE TABLE IF NOT EXISTS sessions (
+        id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+        family TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('web', 'native')),
+        device TEXT NOT NULL DEFAULT '',
+        ip TEXT NOT NULL DEFAULT '',
+        created TEXT NOT NULL,
+        last_seen TEXT NOT NULL,
+        access_hash TEXT,
+        access_exp TEXT,
+        refresh_hash TEXT,
+        refresh_exp TEXT NOT NULL,
+        revoked_at TEXT,
+        revoke_reason TEXT,
+        is_admin INTEGER NOT NULL DEFAULT 0,
+        dek_access BLOB,                           -- user data key wrapped by the access secret
+        dek_refresh BLOB                           -- user data key wrapped by the refresh secret
+    );
+    CREATE INDEX IF NOT EXISTS sessions_account ON sessions(account_id, revoked_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS sessions_access ON sessions(access_hash);
+    CREATE UNIQUE INDEX IF NOT EXISTS sessions_refresh ON sessions(refresh_hash);
+    CREATE TABLE IF NOT EXISTS refresh_history (
+        refresh_hash TEXT PRIMARY KEY, session_id TEXT NOT NULL, family TEXT NOT NULL, rotated TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS account_keys (
+        account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+        key_version INTEGER NOT NULL DEFAULT 1,
+        pw_salt BLOB, pw_wrap BLOB,                -- DEK wrapped by a key derived from the password
+        rec_salt BLOB, rec_wrap BLOB,              -- DEK wrapped by the user-held recovery code
+        created TEXT NOT NULL, updated TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS account_keys_retired (   -- old keys stay recoverable with the user's code
+        account_id TEXT NOT NULL, key_version INTEGER NOT NULL, rec_salt BLOB NOT NULL, rec_wrap BLOB NOT NULL,
+        retired TEXT NOT NULL, PRIMARY KEY (account_id, key_version)
+    );
+    CREATE TABLE IF NOT EXISTS auth_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        account_id TEXT, kind TEXT NOT NULL, ok INTEGER NOT NULL, ip TEXT NOT NULL DEFAULT '',
+        device TEXT NOT NULL DEFAULT '', created TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS auth_events_account ON auth_events(account_id, created);
+    CREATE TABLE IF NOT EXISTS admin_roster (
+        slot INTEGER PRIMARY KEY CHECK (slot IN (1, 2)),
+        account_id TEXT NOT NULL UNIQUE REFERENCES accounts(id),
+        since TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS admin_requests (
+        id TEXT PRIMARY KEY, kind TEXT NOT NULL, payload TEXT NOT NULL, created_by TEXT NOT NULL,
+        created TEXT NOT NULL, expires TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+        decided_by TEXT, decided TEXT
+    );
+    CREATE TABLE IF NOT EXISTS admin_audit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        actor TEXT NOT NULL, action TEXT NOT NULL, target TEXT, reason TEXT NOT NULL DEFAULT '',
+        result TEXT NOT NULL, details TEXT NOT NULL DEFAULT '{}', created TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS security_profile (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated TEXT NOT NULL)
+    ''')
+
+
+def _m5_down(conn):
+    for table in ('security_profile', 'admin_audit', 'admin_requests', 'admin_roster', 'auth_events', 'account_keys_retired',
+                  'account_keys', 'refresh_history', 'sessions', 'accounts'):
+        conn.execute(f'DROP TABLE IF EXISTS {table}')
+
+
 MIGRATIONS = {
     1: ('Baseline schema of Chelsy 0.9.2', _m1_baseline, None),
     2: ('Conversations, stable message ids, feedback, user settings', _m2_conversations, _m2_down),
     3: ('Knowledge Engine and research storage', _m3_knowledge, _m3_down),
     4: ('Autonomous learning journal', _m4_learning_log, _m4_down),
+    5: ('0.9.4 own accounts, sessions, user keys, two administrators, audit', _m5_own_auth, _m5_down),
 }
 
 
