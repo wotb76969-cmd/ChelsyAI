@@ -14,8 +14,8 @@ import 'package:material_ui/material_ui.dart';
 
 void main() {
   group('Host URL validation', () {
-    test('accepts Tailscale HTTPS origin', () {
-      expect(validateHostUrl(' https://laptop.tailnet.ts.net/ '), 'https://laptop.tailnet.ts.net');
+    test('accepts Host HTTPS origin', () {
+      expect(validateHostUrl(' https://chelsy.example.com/ '), 'https://chelsy.example.com');
     });
     test('rejects insecure or ambiguous addresses', () {
       for (final bad in [

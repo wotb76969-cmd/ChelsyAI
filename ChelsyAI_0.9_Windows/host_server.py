@@ -1,13 +1,12 @@
-"""Chelsy AI Host API (0.9.3).
+"""Chelsy AI Host API (0.9.4).
 
-Binds to loopback ONLY. Remote devices reach it through Tailscale Serve
-(HTTPS inside your private tailnet). Ollama is never exposed: clients talk
-to this API, the API talks to Ollama on 127.0.0.1.
+Default productive path (ТЗ 0.9.4): own HTTPS address + own Auth (api/v3).
+Tailscale/Supabase are NOT required for login, chat or file generation.
+Legacy /api and /api/v2 remain for migration from 0.9.3 clients.
 
-Compatibility: all 0.9.2 endpoints (/api/status, /api/history, /api/chat,
-/api/memory, /api/sync) keep working for older Windows/Android clients.
-New clients use /api/v2/* (conversations, streaming, stop, research,
-knowledge base, settings).
+Ollama stays local: clients talk to this API; the API talks to Ollama on 127.0.0.1.
+Bind address is configurable (CHELSY_HOST_BIND); public exposure must be HTTPS
+terminated by the owner (see host_https / docs). Admin panel is separate.
 """
 from __future__ import annotations
 
@@ -27,9 +26,11 @@ import core
 from core import authenticate, answer, history, personal_facts, stats, ollama_available, crawl, store_personal_fact
 from supabase_auth import verify_cached as verify, storage_key, config as sb_config, admin_user_id, AuthError
 from cloud_sync import sync as cloud_sync, pull_memories, push_memories, save_memory, SyncError
+import api_v3
 
-VERSION = '0.9.3'
+VERSION = '0.9.4'
 PORT = int(os.environ.get('CHELSY_HOST_PORT', '8787'))
+BIND = os.environ.get('CHELSY_HOST_BIND', '127.0.0.1')
 MAX_BODY = 12_000
 MAX_CHAT_BODY = 70_000
 RATE_LIMIT = 12
@@ -53,14 +54,34 @@ def allowed_models():
 
 
 def authorize(header: str | None):
-    """Return storage key ('sb:<uuid>' or legacy name) or None."""
+    """Return storage key: 'u:<uuid>' (0.9.4), 'sb:<uuid>' (legacy) or legacy name."""
+    token = None
     if header and header.startswith('Bearer '):
+        token = header[7:].strip()
+    if token:
+        # Prefer own Auth (0.9.4)
         try:
-            return storage_key(verify(header[7:].strip()))
+            from auth.sessions import resolve_access_token
+            from auth.accounts import storage_key_for, get_user
+            with core.db() as conn:
+                session = resolve_access_token(conn, token)
+                if session:
+                    user = get_user(conn, session['user_id'])
+                    if user and user['status'] == 'active':
+                        return storage_key_for(user['id'])
+        except Exception:
+            pass
+        # Legacy Supabase path (migration only)
+        try:
+            return storage_key(verify(token))
         except (AuthError, ValueError):
             return None
     if sb_config() is not None or os.getenv('CHELSY_ALLOW_LEGACY_BASIC') != '1':
-        return None  # unified auth is required by default; legacy only on explicit dev opt-in
+        # Own-auth mode: allow Basic only with explicit opt-in even without Supabase
+        if os.getenv('CHELSY_AUTH_MODE', 'own') == 'own' and os.getenv('CHELSY_ALLOW_LEGACY_BASIC') != '1':
+            return None
+        if os.getenv('CHELSY_ALLOW_LEGACY_BASIC') != '1':
+            return None
     if not header or not header.startswith('Basic '):
         return None
     try:
@@ -86,6 +107,13 @@ def permit(username: str, now=None):
 
 
 def is_owner(username):
+    if username.startswith('u:'):
+        try:
+            from auth.accounts import is_admin
+            with core.db() as conn:
+                return is_admin(conn, username[2:])
+        except Exception:
+            return False
     if username.startswith('sb:'):
         admin = admin_user_id()
         return bool(admin) and username == 'sb:' + admin
@@ -108,7 +136,7 @@ def _background_sync(username, token):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = 'ChelsyPrivateHost/0.9.3'
+    server_version = 'ChelsyPrivateHost/0.9.4'
     sys_version = ''
 
     def log_message(self, fmt, *args):
@@ -123,6 +151,12 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('X-Frame-Options', 'DENY')
         self.send_header('Referrer-Policy', 'no-referrer')
+        # Cabinet may be same-origin; limited CORS when CHELSY_CORS_ORIGIN set
+        origin = os.environ.get('CHELSY_CORS_ORIGIN', '').strip()
+        if origin:
+            self.send_header('Access-Control-Allow-Origin', origin)
+            self.send_header('Access-Control-Allow-Credentials', 'true')
+            self.send_header('Vary', 'Origin')
         if length is not None:
             self.send_header('Content-Length', str(length))
         self.end_headers()
@@ -165,10 +199,26 @@ class Handler(BaseHTTPRequestHandler):
     def query(self):
         return {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
 
+    def do_OPTIONS(self):
+        origin = os.environ.get('CHELSY_CORS_ORIGIN', '').strip()
+        self.send_response(204)
+        if origin:
+            self.send_header('Access-Control-Allow-Origin', origin)
+            self.send_header('Access-Control-Allow-Credentials', 'true')
+            self.send_header('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-CSRF-Token')
+            self.send_header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
+        self.end_headers()
+
     # ---------------------------------------------------------------- routing
     def do_GET(self):
         path = urlsplit(self.path).path
+        if api_v3.handle_public(self, 'GET', path):
+            return
+        if path.startswith('/api/v3/'):
+            if api_v3.handle_authed(self, 'GET', path):
+                return
         if path == '/api/health':
+            # Keep minimal public surface (legacy clients + tests). Details → /api/v3/health
             return self.reply(200, {'service': 'Chelsy AI Host', 'version': VERSION, 'ok': True})
         legacy = {'/api/status', '/api/history', '/api/memory', '/api/sync'}
         if path not in legacy and not path.startswith('/api/v2/'):
@@ -182,6 +232,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
+        if api_v3.handle_public(self, 'POST', path):
+            return
+        if path.startswith('/api/v3/'):
+            if api_v3.handle_authed(self, 'POST', path):
+                return
         if path in ('/api/chat', '/api/memory'):
             username = self.user()
             if username:
@@ -196,6 +251,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         path = urlsplit(self.path).path
+        if path.startswith('/api/v3/'):
+            if api_v3.handle_authed(self, 'DELETE', path):
+                return
         m = re.fullmatch(r'/api/v2/conversations/([0-9a-fA-F-]{36})', path)
         if not m:
             return self.reply(404, {'error': 'Not found'})
@@ -553,33 +611,49 @@ def auto_research_loop():
 
 def make_server(port=None):
     port = PORT if port is None else port
-    return ThreadingHTTPServer(('127.0.0.1', port), Handler)
+    return ThreadingHTTPServer((BIND, port), Handler)
 
 
 def serve():
-    if sb_config() is None and os.getenv('CHELSY_ALLOW_LEGACY_BASIC') != '1':
+    auth_mode = os.getenv('CHELSY_AUTH_MODE', 'own')
+    if auth_mode == 'supabase' and sb_config() is None and os.getenv('CHELSY_ALLOW_LEGACY_BASIC') != '1':
+        raise RuntimeError('Configure Supabase Auth or set CHELSY_AUTH_MODE=own for 0.9.4.')
+    if auth_mode == 'own':
+        # Bootstrap admins from env when provided (ADM-01)
+        pass
+    elif sb_config() is None and os.getenv('CHELSY_ALLOW_LEGACY_BASIC') != '1':
         raise RuntimeError('Configure Supabase Auth before running Chelsy Host. Run ChelsyConfig.')
     if PORT < 1024 or PORT > 65535:
         raise ValueError('Use an unprivileged port between 1024 and 65535')
+    if BIND not in ('127.0.0.1', '::1') and os.environ.get('CHELSY_ALLOW_PUBLIC_BIND') != '1':
+        raise RuntimeError(
+            'Публичный bind запрещён без CHELSY_ALLOW_PUBLIC_BIND=1. '
+            'Сначала настройте TLS (см. docs/0.9.4/NETWORK_0.9.4_RU.md).'
+        )
     import migrations
     migrations.migrate(core.DB_PATH, log=print)
+    if auth_mode == 'own':
+        from auth import ensure_bootstrap_admins
+        with core.db() as conn:
+            created = ensure_bootstrap_admins(conn)
+        if created:
+            print(f'Bootstrap admins created: {len(created)}', flush=True)
     from knowledge import services
     services()['scheduler'].start(owner_check=is_owner)
     if os.environ.get('CHELSY_AUTO_CRAWL') == '1':
         threading.Thread(target=auto_research_loop, daemon=True).start()
-    print(f'Chelsy AI Host {VERSION} runs on http://127.0.0.1:%d' % PORT, flush=True)
+    print(f'Chelsy AI Host {VERSION} ({auth_mode}) on http://{BIND}:{PORT}', flush=True)
+    print('Клиенты: HTTPS-адрес Host + email/пароль (api/v3). Tailscale/Supabase не обязательны.', flush=True)
     try:
         import host_doctor
         ts = host_doctor.tailscale_info()
         if ts['serving'] and ts['url']:
-            print(f'Адрес для Windows Client и Android: {ts["url"]}', flush=True)
-        else:
-            print('Доступ с устройств ещё не включён: ChelsyHost.exe --setup-tailscale '
-                  f'(или tailscale serve --bg {PORT})', flush=True)
+            print(f'(Опционально, legacy) Tailscale URL: {ts["url"]}', flush=True)
     except Exception:
         pass
-    print('Never forward this port on your router or use Tailscale Funnel.', flush=True)
-    ThreadingHTTPServer(('127.0.0.1', PORT), Handler).serve_forever()
+    if BIND in ('127.0.0.1', '::1'):
+        print('Локальный bind: для внешнего доступа поставьте reverse-proxy с TLS на этот порт.', flush=True)
+    ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
 
 
 def main(argv=None):

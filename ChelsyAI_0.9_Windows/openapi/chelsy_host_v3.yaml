@@ -1,0 +1,85 @@
+openapi: 3.0.3
+info:
+  title: Chelsy AI Host API
+  version: 0.9.4
+  description: Own Auth and Mind endpoints (productive path without Supabase).
+servers:
+  - url: https://host.example.com
+paths:
+  /api/v3/health:
+    get:
+      summary: Health
+      responses:
+        '200':
+          description: OK
+  /api/v3/auth/login:
+    post:
+      summary: Login email/password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string }
+                password: { type: string }
+                device_label: { type: string }
+      responses:
+        '200': { description: Tokens + user }
+        '401': { description: Invalid credentials }
+  /api/v3/auth/refresh:
+    post:
+      summary: Rotate refresh token
+      responses:
+        '200': { description: New tokens }
+  /api/v3/auth/logout:
+    post:
+      summary: Revoke current session
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: OK }
+  /api/v3/me:
+    get:
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Profile }
+    post:
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Updated profile }
+  /api/v3/mind/run:
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Route task / build artifact
+      responses:
+        '200': { description: MindResult }
+  /api/v3/artifacts:
+    get:
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Own artifacts only }
+  /api/v3/artifacts/{id}/download:
+    get:
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: File bytes }
+        '404': { description: Not found / not owner }
+  /api/v3/admin/users:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Admin identity list (no private content)
+      responses:
+        '200': { description: Users }
+        '403': { description: Not admin }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer

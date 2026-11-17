@@ -24,10 +24,9 @@ from tkinter import (BooleanVar, Canvas, END, Frame, Label, Listbox, StringVar, 
 import client_cache
 import secure_store
 from client_api import HostClient, HostError, Unauthorized, validate_host
-from supabase_auth import AuthError, allow_bundled_config, config as supabase_config, login as supabase_login, \
-    refresh as supabase_refresh, _jwt_exp
+from client_auth import AuthError, login as host_login, refresh as host_refresh, logout as host_logout
 
-VERSION = '0.9.3'
+VERSION = '0.9.4'
 BG = '#0B0C20'
 PANEL = '#11132B'
 PANEL2 = '#161937'
@@ -65,55 +64,68 @@ def settings_path():
 
 
 class Session:
-    """Supabase session; the refresh token is persisted only with DPAPI (Windows)."""
+    """Own Host Auth session; refresh token persisted only with DPAPI (Windows)."""
 
     def __init__(self):
         self.access = None
         self.refresh_token = None
         self.email = ''
+        self.host = ''
         self.lock = threading.Lock()
+        self._access_expires = 0
 
-    def login(self, email, password, remember):
-        result = supabase_login(email, password)
+    def login(self, email, password, remember, host=''):
+        host = host or self.host
+        if not host:
+            raise AuthError('Сначала укажи адрес Host')
+        result = host_login(host, email, password)
         with self.lock:
+            self.host = host
             self.access = result['access_token']
             self.refresh_token = result.get('refresh_token')
             self.email = (result.get('user') or {}).get('email') or email
+            self._access_expires = time.time() + int(result.get('access_expires_in') or 600) - 30
         if remember and self.refresh_token:
-            secure_store.save(self.refresh_token)
+            secure_store.save(json.dumps({'refresh': self.refresh_token, 'host': host}))
         return result
 
     def resume(self):
-        token = secure_store.load()
-        if not token:
+        raw = secure_store.load()
+        if not raw:
             return False
         try:
-            result = supabase_refresh(token)
-        except AuthError:
+            data = json.loads(raw) if raw.startswith('{') else {'refresh': raw, 'host': self.host}
+            token, host = data.get('refresh'), data.get('host') or self.host
+            if not token or not host:
+                return False
+            result = host_refresh(host, token)
+        except (AuthError, ValueError, TypeError):
             secure_store.clear()
             return False
         with self.lock:
+            self.host = host
             self.access = result['access_token']
             self.refresh_token = result.get('refresh_token', token)
-            self.email = (result.get('user') or {}).get('email', '')
-        secure_store.save(self.refresh_token)
+            self.email = ((result.get('user') or {}).get('email') or self.email)
+            self._access_expires = time.time() + int(result.get('access_expires_in') or 600) - 30
+        secure_store.save(json.dumps({'refresh': self.refresh_token, 'host': host}))
         return True
 
     def token(self, force_refresh=False):
         with self.lock:
-            access, refresh = self.access, self.refresh_token
+            access, refresh, host, exp = self.access, self.refresh_token, self.host, self._access_expires
         if not access:
             raise Unauthorized('Нужно войти')
-        exp = _jwt_exp(access)
-        if force_refresh or (exp is not None and exp < time.time() + 60):
-            if not refresh:
+        if force_refresh or time.time() >= exp:
+            if not refresh or not host:
                 raise Unauthorized('Сессия истекла')
-            result = supabase_refresh(refresh)
+            result = host_refresh(host, refresh)
             with self.lock:
                 self.access = result['access_token']
                 self.refresh_token = result.get('refresh_token', refresh)
+                self._access_expires = time.time() + int(result.get('access_expires_in') or 600) - 30
             if secure_store.load():
-                secure_store.save(self.refresh_token)
+                secure_store.save(json.dumps({'refresh': self.refresh_token, 'host': host}))
             return self.access
         return access
 
@@ -254,7 +266,6 @@ class ChelsyClientApp:
                 ctypes.windll.shcore.SetProcessDpiAwareness(1)   # crisp text on scaled displays
             except Exception:
                 pass
-        allow_bundled_config(True)
         self.root = Tk()
         self.root.title(f'Chelsy AI · Client {VERSION}')
         self.root.geometry('1180x780')
@@ -359,7 +370,7 @@ class ChelsyClientApp:
         except Exception:
             pass
         ttk.Label(frame, text='Chelsy AI', style='Title.TLabel', font=('Segoe UI Semibold', 20)).pack()
-        ttk.Label(frame, text='Войди аккаунтом Chelsy Group', style='Muted.TLabel').pack(pady=(0, 14))
+        ttk.Label(frame, text='Войди email/паролем на свой Chelsy Host', style='Muted.TLabel').pack(pady=(0, 14))
         horizon = AuroraBand(frame, height=2, base=BG)
         horizon.configure(width=180)
         horizon.pack(pady=(0, 18))
@@ -367,7 +378,7 @@ class ChelsyClientApp:
         self.email_var = StringVar(value=self.saved.get('email', ''))
         self.password_var = StringVar()
         self.remember_var = BooleanVar(value=secure_store.supported())
-        for label, var, show in (('Адрес Chelsy Host (Tailscale)', self.host_var, None), ('Email', self.email_var, None),
+        for label, var, show in (('Адрес Chelsy Host (HTTPS)', self.host_var, None), ('Email', self.email_var, None),
                                  ('Пароль', self.password_var, '•')):
             ttk.Label(frame, text=label, style='Muted.TLabel').pack(anchor='w')
             entry = ttk.Entry(frame, textvariable=var, show=show, width=46)
@@ -397,9 +408,6 @@ class ChelsyClientApp:
         except ValueError as exc:
             self.login_status.configure(text=str(exc))
             return
-        if supabase_config() is None:
-            self.login_status.configure(text='Supabase не настроен. Запусти «Chelsy Supabase Setup».')
-            return
         email, password, remember = self.email_var.get().strip(), self.password_var.get(), self.remember_var.get()
         self.password_var.set('')
         self.login_button.state(['disabled'])
@@ -407,10 +415,10 @@ class ChelsyClientApp:
 
         def job():
             try:
-                self.session.login(email, password, remember)
+                self.session.login(email, password, remember, host=host)
                 self.events.put(('logged-in', host))
             except AuthError as exc:
-                self.events.put(('login-error', 'Не удалось войти: проверь email и пароль. (' + str(exc) + ')'))
+                self.events.put(('login-error', 'Не удалось войти: проверь Host, email и пароль. (' + str(exc) + ')'))
         self._background(job)
 
     def _try_resume(self):

@@ -2,20 +2,21 @@ import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'api.dart';
 import 'aurora.dart';
 import 'local_store.dart';
 import 'logic.dart';
 import 'message_view.dart';
+import 'own_auth.dart';
 import 'pulse.dart';
 import 'research_screen.dart';
 import 'theme.dart';
 
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key, required this.onSignedOut});
+  const ChatScreen({super.key, required this.onSignedOut, required this.auth});
   final VoidCallback onSignedOut;
+  final OwnAuth auth;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -27,7 +28,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final _scroll = ScrollController();
   HostApi? _api;
   LocalStore? _store;
-  String _readOnlyLabel = 'Хост недоступен — показана история из облака (только чтение).';
+  String _readOnlyLabel = 'Хост недоступен — показана локальная копия (только чтение).';
   List<Conversation> _conversations = [];
   List<ChatMessage> _messages = [];
   String? _conversationId;
@@ -71,7 +72,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final prefs = await SharedPreferences.getInstance();
     final host = prefs.getString('chelsy_host') ?? '';
     _web = prefs.getBool('chelsy_web') ?? true;
-    final uid = Supabase.instance.client.auth.currentUser?.id;
+    final uid = widget.auth.userId;
     if (uid != null) {
       try {
         _store = await LocalStore.forUser(uid);
@@ -80,7 +81,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       }
     }
     try {
-      _api = HostApi(host);
+      _api = HostApi(host, tokenProvider: widget.auth.token);
     } on FormatException catch (e) {
       _setOffline(e.message);
       return;
@@ -142,28 +143,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  /// Host offline: read-only history straight from Supabase (protected by RLS).
+  /// Host offline: read-only history from the on-device cache (0.9.4, no SaaS).
   Future<void> _loadCloudHistory() async {
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) return;
-    try {
-      final rows = await Supabase.instance.client
-          .from('chelsy_ai_messages')
-          .select('role,content,created_at')
-          .eq('user_id', user.id)
-          .order('created_at', ascending: false)
-          .limit(200);
-      if (!mounted) return;
-      setState(() {
-        _readOnlyCloud = true;
-        _readOnlyLabel = 'Хост недоступен — показана история из облака (только чтение).';
-        _title = 'История из облака';
-        _messages = rows.reversed.map((r) => ChatMessage.fromJson(Map<String, dynamic>.from(r))).toList();
-      });
-      _scrollDown();
-    } catch (_) {
-      // No internet at all: keep the offline banner.
-    }
+    final convs = await _store?.loadConversations() ?? [];
+    if (convs.isEmpty) return;
+    await _openCached(convs.first);
   }
 
   /// Offline: open the copy stored on this phone (read-only).
@@ -452,14 +436,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _signOut() async {
     await _stream?.cancel();
     await _store?.clear(); // no chat copies remain on the phone after sign-out
-    await Supabase.instance.client.auth.signOut();
+    await widget.auth.logout();
     widget.onSignedOut();
   }
 
   Widget _sidebar(BuildContext context, {required bool inDrawer}) {
     final favs = _conversations.where((c) => c.favorite).toList();
     final recent = _conversations.where((c) => !c.favorite).toList();
-    final email = Supabase.instance.client.auth.currentUser?.email ?? '';
+    final email = widget.auth.email ?? '';
     void close() {
       if (inDrawer) Navigator.of(context).maybePop();
     }

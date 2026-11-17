@@ -1,0 +1,75 @@
+{"text": "Нужно: Изучи открытые источники по Kubernetes", "route": "research", "lang": "ru"}
+{"text": "Describe REST", "route": "chat", "lang": "en"}
+{"text": "Расскажи про Python", "route": "chat", "lang": "ru"}
+{"text": "Нужно: Find sources about SQLite WAL", "route": "research", "lang": "en"}
+{"text": "Создай txt список дел пожалуйста", "route": "txt", "lang": "ru"}
+{"text": "Создай DOCX на три страницы про отпуск", "route": "docx", "lang": "ru"}
+{"text": "Research public docs on OAuth2 пожалуйста", "route": "research", "lang": "en"}
+{"text": "Нужно: Создай DOCX на три страницы про отпуск", "route": "docx", "lang": "ru"}
+{"text": "Нужно: Подготовь XLSX-бюджет с итогами", "route": "xlsx", "lang": "ru"}
+{"text": "Prepare an XLSX budget with totals", "route": "xlsx", "lang": "en"}
+{"text": "Подготовь XLSX-бюджет с итогами пожалуйста", "route": "xlsx", "lang": "ru"}
+{"text": "Нужно: Make txt notes", "route": "txt", "lang": "en"}
+{"text": "Create a PDF guide", "route": "pdf", "lang": "en"}
+{"text": "Сохрани текстовый файл заметок", "route": "txt", "lang": "ru"}
+{"text": "Подготовь документ Word с отчётом пожалуйста", "route": "docx", "lang": "ru"}
+{"text": "Что такое API пожалуйста", "route": "chat", "lang": "ru"}
+{"text": "Найди источники про TLS 1.3 пожалуйста", "route": "research", "lang": "ru"}
+{"text": "Create pptx pitch deck пожалуйста", "route": "pptx", "lang": "en"}
+{"text": "Make a PowerPoint with 6 slides пожалуйста", "route": "pptx", "lang": "en"}
+{"text": "How does TCP work пожалуйста", "route": "chat", "lang": "en"}
+{"text": "Нужно: Explain recursion", "route": "chat", "lang": "en"}
+{"text": "Нужно: Research public docs on OAuth2", "route": "research", "lang": "en"}
+{"text": "Сделай реферат в docx пожалуйста", "route": "docx", "lang": "ru"}
+{"text": "Как работает JSON пожалуйста", "route": "chat", "lang": "ru"}
+{"text": "Make a Word document outline пожалуйста", "route": "docx", "lang": "en"}
+{"text": "Нужно: Создай pptx про запуск продукта", "route": "pptx", "lang": "ru"}
+{"text": "Нужно: Найди источники про TLS 1.3", "route": "research", "lang": "ru"}
+{"text": "Why use indexes", "route": "chat", "lang": "en"}
+{"text": "Создай pptx про запуск продукта", "route": "pptx", "lang": "ru"}
+{"text": "Нужно: Объясни что такое HTTP", "route": "chat", "lang": "ru"}
+{"text": "Создай DOCX на три страницы про отпуск пожалуйста", "route": "docx", "lang": "ru"}
+{"text": "Создай txt список дел", "route": "txt", "lang": "ru"}
+{"text": "Исследуй документацию FastAPI", "route": "research", "lang": "ru"}
+{"text": "Исследуй документацию FastAPI пожалуйста", "route": "research", "lang": "ru"}
+{"text": "Нужно: Describe REST", "route": "chat", "lang": "en"}
+{"text": "Сохрани текстовый файл заметок пожалуйста", "route": "txt", "lang": "ru"}
+{"text": "Why use indexes пожалуйста", "route": "chat", "lang": "en"}
+{"text": "What is a mutex", "route": "chat", "lang": "en"}
+{"text": "Нужно: Почему небо голубое", "route": "chat", "lang": "ru"}
+{"text": "Изучи открытые источники по Kubernetes пожалуйста", "route": "research", "lang": "ru"}
+{"text": "Нужно: What is a mutex", "route": "chat", "lang": "en"}
+{"text": "Make txt notes пожалуйста", "route": "txt", "lang": "en"}
+{"text": "Создай pptx про запуск продукта пожалуйста", "route": "pptx", "lang": "ru"}
+{"text": "Нужно: Create excel spreadsheet costs", "route": "xlsx", "lang": "en"}
+{"text": "Нужно: Create a PDF guide", "route": "pdf", "lang": "en"}
+{"text": "Объясни что такое HTTP пожалуйста", "route": "chat", "lang": "ru"}
+{"text": "Create pptx pitch deck", "route": "pptx", "lang": "en"}
+{"text": "Нужно: Расскажи про Python", "route": "chat", "lang": "ru"}
+{"text": "Почему небо голубое пожалуйста", "route": "chat", "lang": "ru"}
+{"text": "Create a DOCX report on budgets", "route": "docx", "lang": "en"}
+{"text": "Нужно: Create pptx pitch deck", "route": "pptx", "lang": "en"}
+{"text": "Explain recursion", "route": "chat", "lang": "en"}
+{"text": "Подготовь XLSX-бюджет с итогами", "route": "xlsx", "lang": "ru"}
+{"text": "How does TCP work", "route": "chat", "lang": "en"}
+{"text": "Create a plain text file", "route": "txt", "lang": "en"}
+{"text": "Нужно: Сделай таблицу excel расходов", "route": "xlsx", "lang": "ru"}
+{"text": "Explain recursion пожалуйста", "route": "chat", "lang": "en"}
+{"text": "Почему небо голубое", "route": "chat", "lang": "ru"}
+{"text": "Нужно: How does TCP work", "route": "chat", "lang": "en"}
+{"text": "Подготовь документ Word с отчётом", "route": "docx", "lang": "ru"}
+{"text": "Расскажи про Python пожалуйста", "route": "chat", "lang": "ru"}
+{"text": "Make a PowerPoint with 6 slides", "route": "pptx", "lang": "en"}
+{"text": "Нужно: Create a DOCX report on budgets", "route": "docx", "lang": "en"}
+{"text": "Нужно: Что такое API", "route": "chat", "lang": "ru"}
+{"text": "Найди источники про TLS 1.3", "route": "research", "lang": "ru"}
+{"text": "What is a mutex пожалуйста", "route": "chat", "lang": "en"}
+{"text": "Нужно: Prepare an XLSX budget with totals", "route": "xlsx", "lang": "en"}
+{"text": "Make pdf summary пожалуйста", "route": "pdf", "lang": "en"}
+{"text": "Create a DOCX report on budgets пожалуйста", "route": "docx", "lang": "en"}
+{"text": "Prepare an XLSX budget with totals пожалуйста", "route": "xlsx", "lang": "en"}
+{"text": "Make a Word document outline", "route": "docx", "lang": "en"}
+{"text": "Сделай презентацию на восемь слайдов пожалуйста", "route": "pptx", "lang": "ru"}
+{"text": "Нужно: Как работает JSON", "route": "chat", "lang": "ru"}
+{"text": "Сделай PDF инструкцию пожалуйста", "route": "pdf", "lang": "ru"}
+{"text": "Сделай презентацию на восемь слайдов", "route": "pptx", "lang": "ru"}

@@ -26,6 +26,10 @@ class TestPrivateNetwork(unittest.TestCase):
         self.assertTrue(host_server.permit('test',now=62))
     def test_loopback_only_source(self):
         import inspect
-        self.assertIn("('127.0.0.1', PORT)", inspect.getsource(host_server.serve))
+        src = inspect.getsource(host_server.serve)
+        # 0.9.4: default BIND is 127.0.0.1; public bind requires CHELSY_ALLOW_PUBLIC_BIND
+        self.assertIn('CHELSY_ALLOW_PUBLIC_BIND', src)
+        self.assertIn('BIND', src)
+        self.assertEqual(host_server.BIND, '127.0.0.1')
 
 if __name__=='__main__':unittest.main()

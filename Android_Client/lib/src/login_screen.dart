@@ -1,16 +1,16 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'aurora.dart';
 import 'logic.dart';
+import 'own_auth.dart';
 import 'theme.dart';
 
-/// Sign-in with the Chelsy Group account (Supabase Auth). The password goes
-/// only to Supabase over HTTPS; it is never stored on the device.
+/// Sign-in with email/password against Chelsy Host api/v3 (0.9.4).
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, required this.onSignedIn});
+  const LoginScreen({super.key, required this.onSignedIn, required this.auth});
   final VoidCallback onSignedIn;
+  final OwnAuth auth;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -48,24 +48,22 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _error = e.message);
       return;
     }
+    // Length policy is enforced by Host on register/change; login must not
+    // lock out migrated accounts that still need a password reset flow.
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      await Supabase.instance.client.auth.signInWithPassword(email: _email.text.trim(), password: _password.text);
+      await widget.auth.login(host, _email.text.trim(), _password.text);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('chelsy_host', host);
       _password.clear();
       widget.onSignedIn();
-    } on AuthException catch (e) {
-      setState(() => _error = e.message.toLowerCase().contains('invalid')
-          ? 'Неверный email или пароль.'
-          : e.message.toLowerCase().contains('confirm')
-              ? 'Сначала подтверди email по письму.'
-              : 'Не удалось войти: ${e.message}');
+    } on AuthFailure catch (e) {
+      setState(() => _error = e.message);
     } catch (_) {
-      setState(() => _error = 'Нет соединения с сервером аккаунтов. Проверь интернет.');
+      setState(() => _error = 'Нет соединения с Chelsy Host. Проверь адрес и сеть.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -80,79 +78,56 @@ class _LoginScreenState extends State<LoginScreen> {
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
-              child: AutofillGroup(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Center(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(24),
-                      child: Image.asset('chelsy_logo.png', width: 88, height: 88, cacheWidth: 264),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  const Text('Chelsy AI', textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 4),
-                  const Text('Войди аккаунтом Chelsy Group', textAlign: TextAlign.center,
-                      style: TextStyle(color: ChelsyColors.muted)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 12),
+                  Text('Chelsy AI', style: Theme.of(context).textTheme.headlineMedium),
+                  const SizedBox(height: 8),
+                  Text('Вход на свой Host (HTTPS)', style: Theme.of(context).textTheme.bodyMedium),
                   const SizedBox(height: 20),
-                  const Padding(padding: EdgeInsets.symmetric(horizontal: 72), child: AuroraBand(state: PulseState.ready, height: 2)),
-                  const SizedBox(height: 24),
+                  const AuroraBand(state: PulseState.ready, height: 3),
+                  const SizedBox(height: 20),
                   TextField(
                     controller: _host,
-                    enabled: !_busy,
+                    decoration: const InputDecoration(labelText: 'Адрес Host (https://…)'),
                     keyboardType: TextInputType.url,
                     autocorrect: false,
-                    decoration: const InputDecoration(
-                      labelText: 'Адрес Chelsy Host',
-                      hintText: 'https://laptop.tailnet.ts.net',
-                      prefixIcon: Icon(Icons.dns_outlined),
-                    ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _email,
-                    enabled: !_busy,
+                    decoration: const InputDecoration(labelText: 'Email'),
                     keyboardType: TextInputType.emailAddress,
-                    autofillHints: const [AutofillHints.email],
-                    autocorrect: false,
-                    decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.alternate_email)),
+                    autofillHints: const [AutofillHints.username, AutofillHints.email],
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _password,
-                    enabled: !_busy,
                     obscureText: _hide,
-                    autofillHints: const [AutofillHints.password],
-                    onSubmitted: (_) => _submit(),
                     decoration: InputDecoration(
                       labelText: 'Пароль',
-                      prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
-                        tooltip: _hide ? 'Показать пароль' : 'Скрыть пароль',
-                        icon: Icon(_hide ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                        tooltip: _hide ? 'Показать' : 'Скрыть',
                         onPressed: () => setState(() => _hide = !_hide),
+                        icon: Icon(_hide ? Icons.visibility : Icons.visibility_off),
                       ),
                     ),
+                    autofillHints: const [AutofillHints.password],
+                    onSubmitted: (_) => _busy ? null : _submit(),
                   ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 12),
+                    Text(_error!, style: TextStyle(color: ChelsyColors.danger)),
+                  ],
                   const SizedBox(height: 20),
                   FilledButton(
                     onPressed: _busy ? null : _submit,
-                    style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
                     child: _busy
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Text('Войти', style: TextStyle(fontSize: 16)),
+                        ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Text('Войти'),
                   ),
-                  if (_error != null) ...[
-                    const SizedBox(height: 14),
-                    Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: ChelsyColors.danger)),
-                  ],
-                  const SizedBox(height: 20),
-                  const Text(
-                    'Ноутбук с Chelsy Host доступен через Tailscale. Пароль передаётся только в Supabase Auth и не сохраняется на телефоне.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: ChelsyColors.muted, fontSize: 12),
-                  ),
-                ]),
+                ],
               ),
             ),
           ),

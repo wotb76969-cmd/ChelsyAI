@@ -21,7 +21,7 @@ from core import (USERS_PATH, MODEL, add_seed, crawl, stats, personal_facts, del
 from desktop_auth import authenticate, account_name, is_admin, bearer_for  # noqa: F401 (authenticate used by launcher)
 from cloud_sync import sync as sync_cloud, pull_memories, push_memories, save_memory, delete_cloud_memory, SyncError
 
-VERSION = '0.9.3'
+VERSION = '0.9.4'
 TEXT_TYPES = ['.txt', '.md', '.py', '.json', '.csv', '.log', '.js', '.ts', '.html', '.css', '.yaml', '.yml', '.xml',
               '.ini', '.toml', '.dart', '.sql', '.java', '.c', '.cpp', '.cs', '.go', '.rs', '.sh', '.ps1', '.bat']
 MAX_FILE = 200_000

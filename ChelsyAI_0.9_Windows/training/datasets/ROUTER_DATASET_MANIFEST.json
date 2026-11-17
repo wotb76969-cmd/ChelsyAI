@@ -1,0 +1,13 @@
+{
+  "name": "router_tasks_v1",
+  "seed": 42,
+  "sha256": "057caad55bbe97e88109e7c17dc385de594c359ec1df55a01b8ab21a3c6efa30",
+  "counts": {
+    "all": 108,
+    "train": 75,
+    "val": 16,
+    "test": 17
+  },
+  "license": "synthetic-internal",
+  "personal_data": false
+}

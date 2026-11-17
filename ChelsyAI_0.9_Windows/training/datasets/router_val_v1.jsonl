@@ -1,0 +1,16 @@
+{"text": "Объясни что такое HTTP", "route": "chat", "lang": "ru"}
+{"text": "Нужно: Создай txt список дел", "route": "txt", "lang": "ru"}
+{"text": "Нужно: Сделай PDF инструкцию", "route": "pdf", "lang": "ru"}
+{"text": "Нужно: Исследуй документацию FastAPI", "route": "research", "lang": "ru"}
+{"text": "Нужно: Сохрани текстовый файл заметок", "route": "txt", "lang": "ru"}
+{"text": "Нужно: Why use indexes", "route": "chat", "lang": "en"}
+{"text": "Нужно: Создай pdf на две страницы", "route": "pdf", "lang": "ru"}
+{"text": "Сделай таблицу excel расходов", "route": "xlsx", "lang": "ru"}
+{"text": "Нужно: Сделай реферат в docx", "route": "docx", "lang": "ru"}
+{"text": "Create excel spreadsheet costs пожалуйста", "route": "xlsx", "lang": "en"}
+{"text": "Нужно: Сделай презентацию на восемь слайдов", "route": "pptx", "lang": "ru"}
+{"text": "Find sources about SQLite WAL пожалуйста", "route": "research", "lang": "en"}
+{"text": "Создай pdf на две страницы", "route": "pdf", "lang": "ru"}
+{"text": "Create excel spreadsheet costs", "route": "xlsx", "lang": "en"}
+{"text": "Create a PDF guide пожалуйста", "route": "pdf", "lang": "en"}
+{"text": "Нужно: Create a plain text file", "route": "txt", "lang": "en"}

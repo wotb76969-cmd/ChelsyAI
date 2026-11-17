@@ -1,0 +1,66 @@
+/* Chelsy cabinet 0.9.4 — dark brand, responsive nav */
+.page-cabinet { background: #0B0C20; color: #E8E6F5; }
+.cabinet-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 1.25rem;
+  max-width: 1200px;
+  margin: 1.5rem auto 3rem;
+  padding: 0 1rem;
+}
+.cabinet-nav {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  position: sticky;
+  top: 5rem;
+  align-self: start;
+}
+.cabinet-nav-item {
+  background: rgba(109, 74, 255, .08);
+  border: 1px solid rgba(167, 139, 250, .25);
+  color: #E8E6F5;
+  border-radius: 12px;
+  padding: .7rem 1rem;
+  text-align: left;
+  cursor: pointer;
+}
+.cabinet-nav-item.is-active,
+.cabinet-nav-item:focus-visible {
+  outline: 2px solid #21D9DA;
+  background: rgba(109, 74, 255, .22);
+}
+.cabinet-main .form-card {
+  background: rgba(18, 19, 42, .9);
+  border: 1px solid rgba(167, 139, 250, .28);
+  border-radius: 16px;
+  padding: 1rem 1.15rem;
+  margin-bottom: 1rem;
+}
+.cabinet-main label { display: block; margin: .5rem 0; }
+.cabinet-main input, .cabinet-main select {
+  width: 100%;
+  margin-top: .35rem;
+  padding: .55rem .7rem;
+  border-radius: 10px;
+  border: 1px solid rgba(167, 139, 250, .35);
+  background: #0B0C20;
+  color: #E8E6F5;
+}
+.cabinet-panel[hidden] { display: none !important; }
+@media (max-width: 768px) {
+  .cabinet-layout { grid-template-columns: 1fr; }
+  .cabinet-nav {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .cabinet-nav-item { flex: 1 1 42%; font-size: .9rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); border: 0;
+}

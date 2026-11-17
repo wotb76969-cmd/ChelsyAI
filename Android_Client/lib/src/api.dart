@@ -4,7 +4,6 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:http/http.dart' as http;
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'logic.dart';
 
@@ -26,24 +25,23 @@ String newRequestId() {
   return '${h.substring(0, 8)}-${h.substring(8, 12)}-${h.substring(12, 16)}-${h.substring(16, 20)}-${h.substring(20)}';
 }
 
-/// Talks to Chelsy Host API v2. The device never talks to Ollama directly.
+/// Talks to Chelsy Host API. The device never talks to Ollama directly.
 class HostApi {
-  HostApi(String host, {http.Client? client})
+  HostApi(String host, {required Future<String> Function() tokenProvider, http.Client? client})
       : base = validateHostUrl(host),
+        _tokenProvider = tokenProvider,
         _client = client ?? http.Client();
 
   final String base;
+  final Future<String> Function() _tokenProvider;
   final http.Client _client;
 
   Future<String> _token() async {
-    final auth = Supabase.instance.client.auth;
-    var session = auth.currentSession;
-    if (session == null) throw HostException('Сначала войди в аккаунт', status: 401);
-    if (session.isExpired) {
-      session = (await auth.refreshSession()).session;
+    try {
+      return await _tokenProvider();
+    } catch (_) {
+      throw HostException('Сначала войди в аккаунт', status: 401);
     }
-    if (session == null) throw HostException('Сессия истекла — войди снова', status: 401);
-    return session.accessToken;
   }
 
   Future<Map<String, dynamic>> _call(String method, String path, [Map<String, dynamic>? body]) async {
@@ -55,7 +53,7 @@ class HostApi {
     try {
       response = await _client.send(request).timeout(const Duration(seconds: 30));
     } on SocketException {
-      throw HostException('Хост недоступен. Проверь, что ноутбук включён и Tailscale подключён.');
+      throw HostException('Хост недоступен. Проверь HTTPS-адрес Host и что ноутбук включён.');
     } on TimeoutException {
       throw HostException('Хост не отвечает. Попробуй позже.');
     } on http.ClientException {
