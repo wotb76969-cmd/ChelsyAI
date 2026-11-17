@@ -4,7 +4,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'aurora.dart';
 import 'logic.dart';
 import 'own_auth.dart';
-import 'pulse.dart';
 import 'theme.dart';
 
 /// Sign-in with email/password against Chelsy Host api/v3 (0.9.4).
