@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'aurora.dart';
 import 'logic.dart';
 import 'own_auth.dart';
+import 'pulse.dart';
 import 'theme.dart';
 
 /// Sign-in with email/password against Chelsy Host api/v3 (0.9.4).
@@ -48,10 +49,8 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _error = e.message);
       return;
     }
-    if (_password.text.length < 15) {
-      setState(() => _error = 'Пароль должен содержать не менее 15 символов.');
-      return;
-    }
+    // Length policy is enforced by Host on register/change; login must not
+    // lock out migrated accounts that still need a password reset flow.
     setState(() {
       _busy = true;
       _error = null;
@@ -88,7 +87,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 8),
                   Text('Вход на свой Host (HTTPS)', style: Theme.of(context).textTheme.bodyMedium),
                   const SizedBox(height: 20),
-                  const AuroraBand(height: 3),
+                  const AuroraBand(state: PulseState.ready, height: 3),
                   const SizedBox(height: 20),
                   TextField(
                     controller: _host,

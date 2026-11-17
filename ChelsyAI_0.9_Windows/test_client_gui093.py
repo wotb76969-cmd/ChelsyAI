@@ -20,8 +20,6 @@ class ClientGuiSmoke(unittest.TestCase):
         os.environ['LOCALAPPDATA'] = self.tmp.name
 
     def tearDown(self):
-        import supabase_auth
-        supabase_auth.allow_bundled_config(False)   # the GUI enables it process-wide; do not leak into other tests
         if self.old is None:
             os.environ.pop('LOCALAPPDATA', None)
         else:
@@ -32,7 +30,7 @@ class ClientGuiSmoke(unittest.TestCase):
         import client_gui
         app = client_gui.ChelsyClientApp()
         try:
-            self.assertEqual(app.root.title(), 'Chelsy AI · Client 0.9.3')
+            self.assertEqual(app.root.title(), 'Chelsy AI · Client 0.9.4')
             app.session.email = 'tester@example.org'
             app.login_frame.destroy()
             app.main_frame = app._main_view()

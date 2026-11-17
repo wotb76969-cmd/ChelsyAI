@@ -1,20 +1,37 @@
 """Chelsy Host Admin Panel 0.9.4 (ADM-02) — local Tk UI, no private user content.
 
 Run: python admin_panel.py
-Remote admin UI is OFF by default.
+Remote admin UI is OFF by default. Only loopback HTTP or HTTPS is allowed.
 """
 from __future__ import annotations
 
 import json
 import os
-import sys
 import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
-from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
-HOST = os.environ.get('CHELSY_ADMIN_HOST', 'http://127.0.0.1:8787').rstrip('/')
+_DEFAULT = 'http://127.0.0.1:8787'
+HOST = os.environ.get('CHELSY_ADMIN_HOST', _DEFAULT).rstrip('/')
+
+
+def _assert_safe_admin_host(url: str) -> None:
+    """Refuse remote plaintext HTTP so admin passwords are not sent in cleartext."""
+    parts = urlsplit(url)
+    host = (parts.hostname or '').lower()
+    if parts.scheme == 'https':
+        return
+    if parts.scheme == 'http' and host in ('127.0.0.1', 'localhost', '::1'):
+        return
+    raise ValueError(
+        'Админ-панель: разрешён только http://127.0.0.1 (локально) или https://… '
+        'Удалённый HTTP запрещён (SEC-02).'
+    )
+
+
+_assert_safe_admin_host(HOST)
 
 
 class Api:
@@ -55,6 +72,17 @@ class AdminApp:
         root.configure(bg='#0B0C20')
         self._login_ui()
 
+    def _bg(self, work, on_ok, on_err=None):
+        def runner():
+            try:
+                result = work()
+            except Exception as exc:
+                err = exc
+                self.root.after(0, lambda: (on_err or (lambda e: messagebox.showerror('Ошибка', str(e))))(err))
+                return
+            self.root.after(0, lambda: on_ok(result))
+        threading.Thread(target=runner, daemon=True).start()
+
     def _login_ui(self):
         frame = ttk.Frame(self.root, padding=24)
         frame.pack(expand=True)
@@ -66,21 +94,31 @@ class AdminApp:
         ttk.Entry(frame, textvariable=self.email, width=40).grid(row=1, column=1, pady=4)
         ttk.Entry(frame, textvariable=self.password, show='*', width=40).grid(row=2, column=1, pady=4)
         ttk.Button(frame, text='Войти', command=self._do_login).grid(row=3, column=1, sticky='e', pady=12)
-        ttk.Label(frame, text=f'Host: {HOST}\nАдминистратор не видит чаты и файлы пользователей.',
-                  wraplength=420).grid(row=4, column=0, columnspan=2)
+        ttk.Label(
+            frame,
+            text=f'Host: {HOST}\nАдминистратор не видит чаты и файлы пользователей.\n'
+                 'Удалённый HTTP отключён; для удалённого доступа нужен HTTPS.',
+            wraplength=420,
+        ).grid(row=4, column=0, columnspan=2)
 
     def _do_login(self):
-        try:
-            self.api.login(self.email.get().strip(), self.password.get())
-        except PermissionError as exc:
-            messagebox.showerror('Отказ', str(exc))
-            return
-        except Exception as exc:
-            messagebox.showerror('Ошибка', f'Не удалось войти: {type(exc).__name__}')
-            return
-        for w in self.root.winfo_children():
-            w.destroy()
-        self._main_ui()
+        email, password = self.email.get().strip(), self.password.get()
+
+        def work():
+            return self.api.login(email, password)
+
+        def ok(_user):
+            for w in self.root.winfo_children():
+                w.destroy()
+            self._main_ui()
+
+        def err(exc):
+            if isinstance(exc, PermissionError):
+                messagebox.showerror('Отказ', str(exc))
+            else:
+                messagebox.showerror('Ошибка', f'Не удалось войти: {type(exc).__name__}')
+
+        self._bg(work, ok, err)
 
     def _main_ui(self):
         nb = ttk.Notebook(self.root)
@@ -114,16 +152,14 @@ class AdminApp:
         self.refresh_errors()
 
     def refresh_status(self):
-        try:
-            data = self.api.call('GET', '/api/v3/admin/status')
-            self.status_text.delete('1.0', 'end')
-            self.status_text.insert('end', json.dumps(data, ensure_ascii=False, indent=2))
-        except Exception as exc:
-            messagebox.showerror('Статус', str(exc))
+        self._bg(
+            lambda: self.api.call('GET', '/api/v3/admin/status'),
+            lambda data: (self.status_text.delete('1.0', 'end'),
+                          self.status_text.insert('end', json.dumps(data, ensure_ascii=False, indent=2))),
+        )
 
     def refresh_users(self):
-        try:
-            data = self.api.call('GET', '/api/v3/admin/users')
+        def ok(data):
             for i in self.users.get_children():
                 self.users.delete(i)
             for u in data.get('users', []):
@@ -131,32 +167,33 @@ class AdminApp:
                     u['email'], u['role'], u['status'],
                     f"{u.get('quota_mb_used', 0)}/{u.get('quota_mb_limit', 512)}", u['id'],
                 ))
-        except Exception as exc:
-            messagebox.showerror('Аккаунты', str(exc))
+        self._bg(lambda: self.api.call('GET', '/api/v3/admin/users'), ok)
 
     def _set_status(self, status):
         sel = self.users.selection()
         if not sel:
             return
         uid = self.users.item(sel[0], 'values')[4]
-        try:
-            self.api.call('POST', f'/api/v3/admin/users/{uid}/status', {'status': status, 'reason': 'admin-panel'})
-            self.refresh_users()
-        except Exception as exc:
-            messagebox.showerror('Статус', f'{type(exc).__name__}: операция отклонена или ошибка')
+        self._bg(
+            lambda: self.api.call('POST', f'/api/v3/admin/users/{uid}/status',
+                                  {'status': status, 'reason': 'admin-panel'}),
+            lambda _: self.refresh_users(),
+            lambda exc: messagebox.showerror('Статус', f'{type(exc).__name__}: операция отклонена или ошибка'),
+        )
 
     def refresh_errors(self):
-        try:
-            data = self.api.call('GET', '/api/v3/admin/errors')
+        def ok(data):
             self.err_text.delete('1.0', 'end')
             for e in data.get('errors', []):
                 self.err_text.insert('end', f"{e['at']} [{e['code']}] {e['module']} {e['message']}\n")
-        except Exception as exc:
-            self.err_text.insert('end', f'Ошибка загрузки: {type(exc).__name__}\n')
+        self._bg(
+            lambda: self.api.call('GET', '/api/v3/admin/errors'),
+            ok,
+            lambda exc: self.err_text.insert('end', f'Ошибка загрузки: {type(exc).__name__}\n'),
+        )
 
 
 def main():
-    # Ensure migrations for local panel use same DB
     os.environ.setdefault('CHELSY_APPDATA', '1')
     root = tk.Tk()
     style = ttk.Style(root)

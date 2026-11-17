@@ -8,7 +8,11 @@ import 'src/theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final auth = OwnAuth();
-  await auth.resume();
+  try {
+    await auth.resume().timeout(const Duration(seconds: 15));
+  } catch (_) {
+    // Host timeout / offline must not block app start; tokens stay on device.
+  }
   runApp(ChelsyApp(auth: auth));
 }
 

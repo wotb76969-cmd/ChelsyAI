@@ -141,12 +141,13 @@ def is_admin(conn: sqlite3.Connection, user_id: str) -> bool:
     return bool(row and row[0] == 'admin' and row[1] == 'active')
 
 
-def list_users_admin(conn: sqlite3.Connection) -> list[dict]:
+def list_users_admin(conn: sqlite3.Connection, limit: int = 500) -> list[dict]:
     """Admin view: identity/status/quotas only — NEVER chat/file content."""
     rows = conn.execute(
         '''SELECT id, email, role, status, display_name, created, updated,
                   quota_mb_used, quota_mb_limit
-           FROM auth_users WHERE status!='deleted' ORDER BY created'''
+           FROM auth_users WHERE status!='deleted' ORDER BY created LIMIT ?''',
+        (max(1, min(int(limit), 2000)),),
     ).fetchall()
     return [
         {

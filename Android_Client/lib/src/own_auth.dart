@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -49,6 +50,7 @@ class OwnAuth {
     if (stored == null) return false;
     host = stored.host;
     refreshToken = stored.refresh;
+    accessToken = stored.access.isEmpty ? null : stored.access;
     try {
       final resp = await _client
           .post(
@@ -56,11 +58,18 @@ class OwnAuth {
             headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
             body: jsonEncode({'refresh_token': refreshToken}),
           )
-          .timeout(const Duration(seconds: 20));
+          .timeout(const Duration(seconds: 12));
       final data = jsonDecode(resp.body.isEmpty ? '{}' : resp.body) as Map<String, dynamic>;
-      if (resp.statusCode >= 400) {
+      if (resp.statusCode == 401) {
+        // Only clear on definitive auth rejection (SEC-02 revoke / invalid refresh).
         await SecureStore.clearTokens();
+        accessToken = null;
+        refreshToken = null;
         return false;
+      }
+      if (resp.statusCode >= 400) {
+        // Transient server error: keep persisted refresh for the next attempt.
+        return accessToken != null && accessToken!.isNotEmpty;
       }
       accessToken = data['access_token'] as String?;
       refreshToken = data['refresh_token'] as String? ?? refreshToken;
@@ -71,7 +80,13 @@ class OwnAuth {
       await SecureStore.saveTokens(host: host, access: accessToken!, refresh: refreshToken!);
       return true;
     } on SocketException {
-      return false;
+      return accessToken != null && accessToken!.isNotEmpty;
+    } on TimeoutException {
+      return accessToken != null && accessToken!.isNotEmpty;
+    } on http.ClientException {
+      return accessToken != null && accessToken!.isNotEmpty;
+    } catch (_) {
+      return accessToken != null && accessToken!.isNotEmpty;
     }
   }
 
@@ -88,15 +103,17 @@ class OwnAuth {
   Future<void> logout() async {
     try {
       if (accessToken != null && host.isNotEmpty) {
-        await _client.post(
-          Uri.parse('$host/api/v3/auth/logout'),
-          headers: {
-            'Authorization': 'Bearer $accessToken',
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: '{}',
-        );
+        await _client
+            .post(
+              Uri.parse('$host/api/v3/auth/logout'),
+              headers: {
+                'Authorization': 'Bearer $accessToken',
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+              },
+              body: '{}',
+            )
+            .timeout(const Duration(seconds: 8));
       }
     } catch (_) {}
     accessToken = null;
