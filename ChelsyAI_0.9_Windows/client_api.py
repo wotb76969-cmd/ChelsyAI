@@ -27,7 +27,10 @@ def validate_host(host):
         return host
     if host in ('http://127.0.0.1:8787', 'http://localhost:8787'):
         return host  # same-PC test only
-    raise ValueError('Используй HTTPS-адрес Tailscale Serve (https://имя.tailnet.ts.net). HTTP разрешён только для localhost.')
+    raise ValueError(
+        'Укажи HTTPS-адрес Chelsy Host (прямой HTTPS по ТЗ 0.9.4). '
+        'HTTP разрешён только для localhost при отладке.'
+    )
 
 
 class HostClient:
@@ -63,7 +66,7 @@ class HostClient:
                     raise Unauthorized('Сессия истекла — войди снова.', 401) from exc
                 raise HostError(message, exc.code) from exc
             except URLError as exc:
-                raise HostError('Хост недоступен. Проверь Tailscale, адрес и включён ли ноутбук.') from exc
+                raise HostError('Хост недоступен. Проверь HTTPS-адрес Host и что ноутбук включён.') from exc
         raise Unauthorized('Сессия истекла — войди снова.', 401)
 
     def call(self, method, path, payload=None):

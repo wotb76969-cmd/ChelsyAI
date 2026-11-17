@@ -89,18 +89,31 @@ def checks():
     except OSError as exc:
         add(FAIL, 'Локальные данные', f'Нет доступа на запись: {exc}', 'Проверь права на папку %LOCALAPPDATA%\\ChelsyAI')
 
-    # Accounts
-    try:
-        cfg = config()
-        if cfg:
-            add(OK, 'Supabase Auth', cfg[0])
-            add(OK if admin_user_id() else WARN, 'Владелец (администратор)',
-                admin_user_id() or 'UUID владельца не указан — общая база знаний и автоизучение будут без владельца',
-                'Запусти «Chelsy AI — настройка Supabase» и укажи свой UUID')
-        else:
-            add(FAIL, 'Supabase Auth', 'Не настроен — устройства не смогут войти', 'Запусти «Chelsy AI — настройка Supabase»')
-    except AuthError as exc:
-        add(FAIL, 'Supabase Auth', str(exc), 'Запусти «Chelsy AI — настройка Supabase»')
+    # Accounts (0.9.4: own Auth is default; Supabase optional during migration)
+    auth_mode = os.environ.get('CHELSY_AUTH_MODE', 'own')
+    if auth_mode == 'own':
+        admins = os.environ.get('CHELSY_ADMIN_EMAILS', '').strip()
+        add(OK if admins else WARN, 'Собственный Auth (0.9.4)',
+            'режим own' + (f' · bootstrap admins: {admins}' if admins else ' · задай CHELSY_ADMIN_EMAILS и CHELSY_ADMIN_PASSWORD'),
+            'Экспортируй CHELSY_ADMIN_EMAILS=a@x,b@y и CHELSY_ADMIN_PASSWORD перед первым запуском Host')
+        try:
+            cfg = config()
+            if cfg:
+                add(WARN, 'Supabase (legacy)', cfg[0] + ' — только для миграции, не требуется для входа 0.9.4')
+        except AuthError:
+            pass
+    else:
+        try:
+            cfg = config()
+            if cfg:
+                add(OK, 'Supabase Auth', cfg[0])
+                add(OK if admin_user_id() else WARN, 'Владелец (администратор)',
+                    admin_user_id() or 'UUID владельца не указан',
+                    'Запусти «Chelsy AI — настройка Supabase» и укажи свой UUID')
+            else:
+                add(FAIL, 'Supabase Auth', 'Не настроен', 'Запусти «Chelsy AI — настройка Supabase»')
+        except AuthError as exc:
+            add(FAIL, 'Supabase Auth', str(exc), 'Запусти «Chelsy AI — настройка Supabase»')
 
     # Model
     if ollama_client.available():
@@ -144,14 +157,16 @@ def checks():
     # Remote devices
     ts = tailscale_info()
     if not ts['installed']:
-        add(FAIL, 'Tailscale', 'не установлен — телефон и другие ПК не подключатся', 'Установи Tailscale с tailscale.com/download')
+        add(WARN, 'Tailscale (legacy, опционально)', 'не установлен — в 0.9.4 основной путь: прямой HTTPS',
+            'См. docs/0.9.4/NETWORK_0.9.4_RU.md')
     elif not ts['running']:
-        add(FAIL, 'Tailscale', 'установлен, но не подключён', 'Открой Tailscale и войди в свою сеть')
+        add(WARN, 'Tailscale (legacy, опционально)', 'установлен, но не подключён')
     elif not ts['serving']:
-        add(WARN, 'Tailscale Serve', f'хост ещё не опубликован в сети ({ts["url"] or "адрес неизвестен"})',
-            'Запусти «Chelsy AI Host — включить доступ с устройств» или: tailscale serve --bg ' + str(port()))
+        add(WARN, 'Tailscale Serve (legacy)', f'не опубликован ({ts["url"] or "нет URL"})')
     else:
-        add(OK, 'Доступ с устройств', f'адрес для клиентов: {ts["url"]}')
+        add(OK, 'Tailscale Serve (legacy)', f'адрес: {ts["url"]}')
+    add(WARN, 'Прямой HTTPS', 'настрой reverse-proxy + сертификат на свой домен/IP',
+        'docs/0.9.4/NETWORK_0.9.4_RU.md')
     return results, ts
 
 

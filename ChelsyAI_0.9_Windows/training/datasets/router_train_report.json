@@ -1,0 +1,9 @@
+{
+  "train_acc": 1.0,
+  "val_acc": 1.0,
+  "test_acc": 1.0,
+  "epochs": 8,
+  "lr": 0.35,
+  "weights_path": "/workspace/ChelsyAI_0.9_Windows/training/datasets/router_weights_v1.json",
+  "weights_sha256": "0827abcd55746ec0ab3bf5b2265ab5f2e4c673dc2d4c148a18319fdf3e6eaad1"
+}

@@ -175,8 +175,10 @@ class HostReadinessTests(unittest.TestCase):
         by_name = {r['name']: r for r in results}
         self.assertEqual(by_name['Локальные данные']['status'], host_doctor.OK)
         self.assertEqual(by_name['Ollama']['status'], host_doctor.FAIL)
-        self.assertEqual(by_name['Supabase Auth']['status'], host_doctor.FAIL)
-        self.assertEqual(by_name['Tailscale']['status'], host_doctor.FAIL)
+        # 0.9.4: own Auth is default; missing bootstrap admins → WARN, not FAIL
+        self.assertIn(by_name['Собственный Auth (0.9.4)']['status'], (host_doctor.OK, host_doctor.WARN))
+        # Tailscale is optional legacy path
+        self.assertTrue(any('Tailscale' in n for n in by_name))
         self.assertFalse(ts['installed'])
 
     def test_tailscale_address_detection(self):

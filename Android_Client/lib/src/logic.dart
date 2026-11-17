@@ -2,8 +2,8 @@ import 'dart:convert';
 
 /// Pure logic (no Flutter imports) so it can be unit-tested on the Dart VM.
 
-/// Validates the Chelsy Host address. Only HTTPS (Tailscale Serve) without
-/// path, query, credentials or custom port is accepted; plain HTTP is refused.
+/// Validates the Chelsy Host address. Only HTTPS without path, query,
+/// credentials or custom port; plain HTTP is refused (0.9.4 direct Host).
 String validateHostUrl(String raw) {
   final value = raw.trim().replaceFirst(RegExp(r'/+$'), '');
   final uri = Uri.tryParse(value);
@@ -16,7 +16,7 @@ String validateHostUrl(String raw) {
       uri.hasFragment ||
       (uri.hasPort && uri.port != 443)) {
     throw const FormatException(
-        'Укажи HTTPS-адрес Tailscale Serve, например https://laptop.tailnet.ts.net — без пути, порта и параметров.');
+        'Укажи HTTPS-адрес Chelsy Host, например https://chelsy.example.com — без пути, порта и параметров.');
   }
   return 'https://${uri.host}';
 }

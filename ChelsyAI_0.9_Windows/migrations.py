@@ -27,7 +27,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 6
 MAX_BACKUPS = 30
 
 
@@ -269,11 +269,180 @@ def _m4_down(conn):
     conn.execute('DROP TABLE IF EXISTS learning_log')
 
 
+# --------------------------------------------------------------------------- v5 (0.9.4 own Auth)
+def _m5_own_auth(conn):
+    """Own accounts/sessions — replaces productive Supabase Auth dependency (NET-03, MIG-01)."""
+    _script(conn, '''
+    CREATE TABLE IF NOT EXISTS auth_users (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        display_name TEXT NOT NULL DEFAULT '',
+        role TEXT NOT NULL DEFAULT 'user',
+        status TEXT NOT NULL DEFAULT 'active',
+        created TEXT NOT NULL,
+        updated TEXT NOT NULL,
+        email_verified INTEGER NOT NULL DEFAULT 0,
+        key_wrap_json TEXT NOT NULL DEFAULT '',
+        created_by TEXT NOT NULL DEFAULT 'self',
+        locale TEXT NOT NULL DEFAULT 'ru',
+        timezone TEXT NOT NULL DEFAULT 'UTC',
+        memory_enabled INTEGER NOT NULL DEFAULT 1,
+        avatar_path TEXT NOT NULL DEFAULT '',
+        quota_mb_used REAL NOT NULL DEFAULT 0,
+        quota_mb_limit REAL NOT NULL DEFAULT 512,
+        legacy_supabase_id TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS auth_users_role ON auth_users(role, status);
+
+    CREATE TABLE IF NOT EXISTS auth_sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        access_hash TEXT NOT NULL,
+        refresh_hash TEXT NOT NULL,
+        previous_refresh_hash TEXT NOT NULL DEFAULT '',
+        refresh_family TEXT NOT NULL DEFAULT '',
+        access_expires REAL NOT NULL,
+        refresh_expires REAL NOT NULL,
+        created TEXT NOT NULL,
+        last_seen TEXT NOT NULL,
+        device_label TEXT NOT NULL DEFAULT '',
+        user_agent TEXT NOT NULL DEFAULT '',
+        source_ip TEXT NOT NULL DEFAULT '',
+        is_admin INTEGER NOT NULL DEFAULT 0,
+        revoked INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS auth_sessions_access ON auth_sessions(access_hash);
+    CREATE INDEX IF NOT EXISTS auth_sessions_refresh ON auth_sessions(refresh_hash);
+    CREATE INDEX IF NOT EXISTS auth_sessions_user ON auth_sessions(user_id, last_seen);
+
+    CREATE TABLE IF NOT EXISTS auth_audit (
+        id TEXT PRIMARY KEY,
+        at TEXT NOT NULL,
+        actor_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        object_type TEXT NOT NULL DEFAULT '',
+        object_id TEXT NOT NULL DEFAULT '',
+        result TEXT NOT NULL DEFAULT '',
+        detail TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS auth_audit_at ON auth_audit(at);
+
+    CREATE TABLE IF NOT EXISTS auth_admin_confirmations (
+        id TEXT PRIMARY KEY,
+        action TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        proposer_id TEXT NOT NULL,
+        confirmer_id TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'pending',
+        created TEXT NOT NULL,
+        decided TEXT NOT NULL DEFAULT ''
+    );
+
+    CREATE TABLE IF NOT EXISTS auth_legacy_map (
+        legacy_key TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        note TEXT NOT NULL DEFAULT ''
+    )
+    ''')
+
+
+def _m5_down(conn):
+    for table in ('auth_legacy_map', 'auth_admin_confirmations', 'auth_audit',
+                  'auth_sessions', 'auth_users'):
+        conn.execute(f'DROP TABLE IF EXISTS {table}')
+
+
+# --------------------------------------------------------------------------- v6 (artifacts / tasks / mind)
+def _m6_artifacts_tasks(conn):
+    """File artifacts, generation tasks, mind router metrics (MIND-02, ADM-02)."""
+    _script(conn, '''
+    CREATE TABLE IF NOT EXISTS mind_tasks (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created TEXT NOT NULL,
+        updated TEXT NOT NULL,
+        progress REAL NOT NULL DEFAULT 0,
+        error TEXT NOT NULL DEFAULT '',
+        params_json TEXT NOT NULL DEFAULT '{}',
+        result_json TEXT NOT NULL DEFAULT '{}',
+        idempotency_key TEXT NOT NULL DEFAULT '',
+        cancel_requested INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS mind_tasks_user ON mind_tasks(user_id, created);
+    CREATE UNIQUE INDEX IF NOT EXISTS mind_tasks_idem ON mind_tasks(user_id, idempotency_key)
+        WHERE idempotency_key != '';
+
+    CREATE TABLE IF NOT EXISTS mind_artifacts (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        task_id TEXT NOT NULL DEFAULT '',
+        format TEXT NOT NULL,
+        mime TEXT NOT NULL,
+        title TEXT NOT NULL DEFAULT '',
+        filename TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL DEFAULT 0,
+        sha256 TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'ready',
+        created TEXT NOT NULL,
+        updated TEXT NOT NULL,
+        storage_path TEXT NOT NULL,
+        preview_path TEXT NOT NULL DEFAULT '',
+        meta_json TEXT NOT NULL DEFAULT '{}'
+    );
+    CREATE INDEX IF NOT EXISTS mind_artifacts_user ON mind_artifacts(user_id, created);
+
+    CREATE TABLE IF NOT EXISTS mind_router_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        created TEXT NOT NULL,
+        user_id TEXT NOT NULL DEFAULT '',
+        intent TEXT NOT NULL DEFAULT '',
+        route TEXT NOT NULL DEFAULT '',
+        confidence REAL NOT NULL DEFAULT 0,
+        model TEXT NOT NULL DEFAULT '',
+        accepted INTEGER NOT NULL DEFAULT 1
+    );
+
+    CREATE TABLE IF NOT EXISTS host_metrics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        at TEXT NOT NULL,
+        cpu REAL NOT NULL DEFAULT 0,
+        ram_mb REAL NOT NULL DEFAULT 0,
+        disk_mb REAL NOT NULL DEFAULT 0,
+        queue_mb REAL NOT NULL DEFAULT 0,
+        queue_len INTEGER NOT NULL DEFAULT 0,
+        sessions INTEGER NOT NULL DEFAULT 0,
+        heavy_tasks INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS host_error_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        at TEXT NOT NULL,
+        code TEXT NOT NULL DEFAULT '',
+        module TEXT NOT NULL DEFAULT '',
+        request_id TEXT NOT NULL DEFAULT '',
+        category TEXT NOT NULL DEFAULT '',
+        message TEXT NOT NULL DEFAULT ''
+    )
+    ''')
+
+
+def _m6_down(conn):
+    for table in ('host_error_log', 'host_metrics', 'mind_router_log',
+                  'mind_artifacts', 'mind_tasks'):
+        conn.execute(f'DROP TABLE IF EXISTS {table}')
+
+
 MIGRATIONS = {
     1: ('Baseline schema of Chelsy 0.9.2', _m1_baseline, None),
     2: ('Conversations, stable message ids, feedback, user settings', _m2_conversations, _m2_down),
     3: ('Knowledge Engine and research storage', _m3_knowledge, _m3_down),
     4: ('Autonomous learning journal', _m4_learning_log, _m4_down),
+    5: ('Own Auth accounts, sessions, audit (0.9.4)', _m5_own_auth, _m5_down),
+    6: ('Mind tasks, artifacts, host metrics (0.9.4)', _m6_artifacts_tasks, _m6_down),
 }
 
 

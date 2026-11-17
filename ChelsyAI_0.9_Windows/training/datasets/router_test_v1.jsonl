@@ -1,0 +1,17 @@
+{"text": "Что такое API", "route": "chat", "lang": "ru"}
+{"text": "Describe REST пожалуйста", "route": "chat", "lang": "en"}
+{"text": "Нужно: Make a Word document outline", "route": "docx", "lang": "en"}
+{"text": "Изучи открытые источники по Kubernetes", "route": "research", "lang": "ru"}
+{"text": "Нужно: Подготовь документ Word с отчётом", "route": "docx", "lang": "ru"}
+{"text": "Нужно: Make pdf summary", "route": "pdf", "lang": "en"}
+{"text": "Сделай таблицу excel расходов пожалуйста", "route": "xlsx", "lang": "ru"}
+{"text": "Research public docs on OAuth2", "route": "research", "lang": "en"}
+{"text": "Create a plain text file пожалуйста", "route": "txt", "lang": "en"}
+{"text": "Сделай реферат в docx", "route": "docx", "lang": "ru"}
+{"text": "Сделай PDF инструкцию", "route": "pdf", "lang": "ru"}
+{"text": "Make pdf summary", "route": "pdf", "lang": "en"}
+{"text": "Make txt notes", "route": "txt", "lang": "en"}
+{"text": "Создай pdf на две страницы пожалуйста", "route": "pdf", "lang": "ru"}
+{"text": "Как работает JSON", "route": "chat", "lang": "ru"}
+{"text": "Find sources about SQLite WAL", "route": "research", "lang": "en"}
+{"text": "Нужно: Make a PowerPoint with 6 slides", "route": "pptx", "lang": "en"}

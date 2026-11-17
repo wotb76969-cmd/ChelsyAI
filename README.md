@@ -1,21 +1,36 @@
 # ChelsyAI
 
-**Chelsy AI 0.9.3** — персональный ИИ-помощник Chelsy Group: нейросеть работает на вашем компьютере-хосте (Ollama), а Windows-клиент и Android-приложение подключаются к нему через частную сеть Tailscale. Единый аккаунт Chelsy Group (Supabase) на сайте, Windows и Android.
+**Chelsy AI 0.9.4** — персональный ИИ-помощник Chelsy Group. Нейросеть и данные на вашем Host; клиенты Windows / Android / кабинет сайта подключаются по **собственному HTTPS**. Аккаунты — **собственный Auth на Host** (email + пароль). Версию 1.0 не объявлять.
+
+Tailscale и Supabase больше не обязательны в продуктивном пути (оставлены только для миграции с 0.9.3).
 
 ## С чего начать
-- **[Установка.md](Установка.md)** — пошаговая установка хоста, Windows-клиента и Android.
-- [START_HERE_RU.md](START_HERE_RU.md) — навигация по документации.
-- [ChelsyAI_0.9_Windows/README_0.9.3_RU.md](ChelsyAI_0.9_Windows/README_0.9.3_RU.md) — подробная инструкция.
-- [SECURITY_0.9.3_RU.md](SECURITY_0.9.3_RU.md), [TEST_REPORT_0.9.3_RU.md](TEST_REPORT_0.9.3_RU.md), [AUDIT_0.9.3_RU.md](AUDIT_0.9.3_RU.md), [RELEASE_NOTES_RU.md](RELEASE_NOTES_RU.md).
+- **[docs/0.9.4/](docs/0.9.4/)** — ТЗ, архитектура, сеть, матрица безопасности, отчёт ограничений.
+- **[RELEASE_NOTES_0.9.4_RU.md](RELEASE_NOTES_0.9.4_RU.md)** — что вошло в 0.9.4.
+- [Установка.md](Установка.md) — база установки (обновляется под прямой HTTPS).
+- Документы 0.9.3 сохранены для истории регрессий.
+
+## Быстрый старт Host (own Auth)
+
+```bash
+export CHELSY_AUTH_MODE=own
+export CHELSY_ADMIN_EMAILS='admin1@example.com,admin2@example.com'
+export CHELSY_ADMIN_PASSWORD='длинный-пароль-не-короче-15'
+cd ChelsyAI_0.9_Windows
+python migrations.py migrate
+python host_server.py
+```
+
+Панель администратора: `python admin_panel.py` (локально).
 
 ## Состав
 | Папка | Что внутри |
 |---|---|
-| `ChelsyAI_0.9_Windows/` | Desktop (Gradio), Chelsy Host, Windows Client, движок ответов, база знаний и автоизучение, миграции, тесты, сборщики EXE |
-| `Android_Client/` | Flutter-приложение для Android |
-| `ChelsyGroup_Web/` | сайт Chelsy Group |
-| `ChelsyAI_0.9_Windows/supabase/` | SQL-миграции Supabase и тест RLS |
-| `design-system/`, `PRODUCT.md`, `CLAUDE.md` | дизайн-система и настройки плагинов дизайна |
+| `ChelsyAI_0.9_Windows/` | Desktop, Host API v2/v3, Windows Client, Mind, Auth, миграции, тесты |
+| `Android_Client/` | Flutter Android (OwnAuth) |
+| `iOS_Client/` | инструкция нативного iOS-target |
+| `ChelsyGroup_Web/` | сайт и личный кабинет 0.9.4 |
+| `docs/0.9.4/` | ТЗ и отчёты |
 
 ## Сборка
-GitHub Actions (`.github/workflows/build-clients.yml`) при каждом push: тесты → `ChelsyAI_Host_Setup_0.9.3.exe`, `ChelsyAI_Client_Setup_0.9.3.exe` → `ChelsyAI_Android_0.9.3.apk` (раздел Actions → Artifacts).
+GitHub Actions (`.github/workflows/build-clients.yml`). Подписанные бинарники требуют секретов CI / macOS для iOS — см. отчёт 0.9.4.
