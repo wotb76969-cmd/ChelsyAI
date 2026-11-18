@@ -648,7 +648,13 @@ def serve():
     print('Клиенты: HTTPS-адрес Host + email/пароль (api/v3). Tailscale/Supabase не обязательны.', flush=True)
     if BIND in ('127.0.0.1', '::1'):
         print('Локальный bind: для внешнего доступа поставьте reverse-proxy с TLS на этот порт.', flush=True)
-    ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
+    server=make_server()
+    import signal,lifecycle
+    signal.signal(signal.SIGTERM,lambda *_:lifecycle.stop(server))
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
 
 
 def main(argv=None):

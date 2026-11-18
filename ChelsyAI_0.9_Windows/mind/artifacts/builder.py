@@ -295,27 +295,60 @@ def validate_artifact(fmt: str, path: Path) -> None:
         if not text.strip():
             raise ValueError('Пустой TXT')
         return
-    if fmt in ('docx', 'pptx', 'xlsx'):
-        # OOXML must be a valid zip
-        with zipfile.ZipFile(path, 'r') as zf:
-            names = zf.namelist()
-            if '[Content_Types].xml' not in names:
-                raise ValueError(f'Повреждённый {fmt.upper()}')
-            # Reject embedded macros / OLE
-            for n in names:
-                lower = n.lower()
-                if lower.endswith('.bin') and 'vba' in lower:
-                    raise ValueError('Макросы запрещены')
-                if 'activex' in lower:
-                    raise ValueError('ActiveX запрещён')
+    if path.stat().st_size>25*1024**2:
+        raise ValueError('Файл превышает лимит.')
+    if fmt in ('docx','pptx','xlsx'):
+        from lxml import etree
+        main={'docx':'word/document.xml','pptx':'ppt/presentation.xml','xlsx':'xl/workbook.xml'}[fmt]
+        with zipfile.ZipFile(path) as zf:
+            entries=zf.infolist()
+            names=set(zf.namelist())
+            if (len(entries)>2048 or len(entries)!=len(names) or main not in names or
+                    '[Content_Types].xml' not in names or sum(x.file_size for x in entries)>64*1024**2):
+                raise ValueError('Неверная структура или размер OOXML.')
+            for entry in entries:
+                name=entry.filename
+                low=name.lower()
+                if (name.startswith('/') or '..' in name.split('/') or chr(92) in name or ':' in name or
+                        entry.flag_bits & 1 or entry.file_size>12*1024**2 or
+                        any(x in low for x in ('vbaproject','activex','/embeddings/','externallinks','connections.xml','querytables'))):
+                    raise ValueError('Опасный объект в документе.')
+                if not low.endswith(('.xml','.rels')):continue
+                raw=zf.read(entry)
+                if b'<!DOCTYPE' in raw or b'<!ENTITY' in raw:raise ValueError('DTD запрещён.')
+                parser=etree.XMLParser(resolve_entities=False,no_network=True,load_dtd=False)
+                node=etree.fromstring(raw,parser)
+                if low.endswith('.rels') and node.xpath('//*[@TargetMode="External"]'):
+                    raise ValueError('Внешние связи запрещены.')
+                if fmt=='xlsx':
+                    for formula in node.xpath('//*[local-name()="f"]/text()'):
+                        if not re.fullmatch(r'SUM\([A-Z]{1,3}[1-9]\d*:[A-Z]{1,3}[1-9]\d*\)',formula):
+                            raise ValueError('Неподдерживаемая формула.')
+                if node.xpath('//*[local-name()="instrText" or local-name()="fldSimple" or local-name()="oleObj"]'):
+                    raise ValueError('Активное поле документа запрещено.')
         return
-    if fmt == 'pdf':
-        data = path.read_bytes()[:8]
-        if not data.startswith(b'%PDF'):
-            raise ValueError('Некорректный PDF')
-        # Extractable text check — basic
-        raw = path.read_bytes()
-        if b'/JavaScript' in raw or b'/JS' in raw:
-            raise ValueError('PDF с JavaScript запрещён')
+    if fmt=='pdf':
+        from pypdf import PdfReader
+        reader=PdfReader(path,strict=True)
+        catalog=reader.trailer['/Root']
+        from pypdf.generic import ArrayObject, IndirectObject, NullObject, NumberObject, FloatObject
+        # fpdf2 sets the initial zoom with a local page destination.
+        opening = catalog.get('/OpenAction')
+        if opening is not None:
+            allowed_zoom = (
+                isinstance(opening, ArrayObject) and len(opening) == 3
+                and isinstance(opening[0], IndirectObject)
+                and opening[1] == '/FitH'
+                and isinstance(opening[2], (NullObject, NumberObject, FloatObject))
+                and opening[0] == reader.pages[0].indirect_reference
+            )
+            if not allowed_zoom:
+                raise ValueError('Действие при открытии PDF запрещено.')
+        if reader.is_encrypted or any(k in catalog for k in ('/AA','/AcroForm','/Names')):
+            raise ValueError('Активное содержимое PDF запрещено.')
+        if not 1<=len(reader.pages)<=60 or not all((p.extract_text() or '').strip() for p in reader.pages):
+            raise ValueError('Проверка страниц и текста PDF не пройдена.')
+        if any('/Annots' in page or '/AA' in page for page in reader.pages):
+            raise ValueError('Активные аннотации PDF запрещены.')
         return
     raise ValueError('Неизвестный формат')

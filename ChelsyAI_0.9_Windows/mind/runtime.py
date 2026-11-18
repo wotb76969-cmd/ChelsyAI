@@ -37,7 +37,9 @@ def generate(prompt,plan):
             tokenizer,model=load_language_model(base,adapter)
             ids=tokenizer.apply_chat_template(messages,add_generation_prompt=True,return_tensors='pt')
             with torch.inference_mode():
-                result=model.generate(ids,attention_mask=torch.ones_like(ids),max_new_tokens=768,do_sample=False,pad_token_id=tokenizer.eos_token_id)
+                short=plan.route=='chat' and any(word in prompt.lower() for word in ('коротк','одн','только','слов','short','sentence','only','twelve','без вступления'))
+                budget=80 if short else (320 if plan.route in ('docx','pdf','txt') else 768)
+                result=model.generate(ids,attention_mask=torch.ones_like(ids),max_new_tokens=budget,do_sample=False,pad_token_id=tokenizer.eos_token_id)
             if int(result[0,-1]) not in {tokenizer.eos_token_id,151643}:
                 raise Incomplete('Модель достигла лимита длины ответа.')
             return tokenizer.decode(result[0,ids.shape[1]:],skip_special_tokens=True).strip()

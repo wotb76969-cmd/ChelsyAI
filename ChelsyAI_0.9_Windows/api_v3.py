@@ -239,7 +239,7 @@ def private(h,conn,method,path):
         data=body(h)
         message=data.get('message',data.get('text',''))
         if not isinstance(message,str) or not 0<len(message.strip())<=8000: raise ValueError()
-        result=engine.handle(uid,message.strip(),idempotency_key=str(data.get('idempotency_key','')))
+        result=engine.handle(uid,message.strip(),idempotency_key=str(data.get('idempotency_key','')),source_artifact=data.get('source_artifact'))
         active(h,conn)
         return h.reply(200,asdict(result))
     if action==('GET','/memory'):
@@ -267,7 +267,9 @@ def private(h,conn,method,path):
         row=conn.execute('SELECT params_json FROM mind_tasks WHERE user_id=? AND id=?',(uid,tid)).fetchone()
         if not row: raise LookupError()
         data=body(h)
-        return h.reply(200,asdict(engine.handle(uid,vault.open_json(key,row[0],tid),idempotency_key=str(data.get('idempotency_key','')))))
+        stored=vault.open_json(key,row[0],tid)
+        message,source=(stored['text'],stored.get('source_artifact')) if isinstance(stored,dict) else (stored,None)
+        return h.reply(200,asdict(engine.handle(uid,message,source_artifact=source,idempotency_key=str(data.get('idempotency_key','')))))
     if action==('GET','/history'): return h.reply(200,{'history':history(conn,uid,key)})
     item=re.fullmatch('/history/'+ID,path)
     if item and method in ('POST','DELETE'):
@@ -282,6 +284,7 @@ def private(h,conn,method,path):
     if action==('GET','/export'):
         return h.reply(200,{'profile':user,'memory':facts(conn,uid,key),'history':history(conn,uid,key),'artifacts':engine.list_artifacts(uid),'tasks':tasks(conn,uid)})
     if action==('POST','/me/deletion'):
+        if user['is_admin']: raise Failure(409,'replace_admin','Сначала выполните совместную замену администратора.')
         data=body(h)
         auth.authenticate_user(conn,user['email'],data.get('password',''),source=h.client_address[0])
         conn.execute('INSERT OR IGNORE INTO deletion_requests VALUES(?,?)',(uid,datetime.now(timezone.utc).isoformat()))
@@ -323,9 +326,20 @@ def private(h,conn,method,path):
             if data.get('status')!='active': auth.revoke_all_sessions(conn,item[1])
             conn.commit()
             return h.reply(200,{'ok':True})
+        if action==('POST','/admin/stop'):
+            import lifecycle,uuid
+            if h.client_address[0] not in ('127.0.0.1','::1') or h.headers.get('X-Forwarded-For'):raise Failure(403,'local_only','Требуется локальная панель.')
+            data=body(h)
+            if data.get('confirm') is not True:raise ValueError()
+            conn.execute('INSERT INTO auth_audit VALUES(?,?,?,?,?,?,?,?)',(str(uuid.uuid4()),datetime.now(timezone.utc).isoformat(),uid,'host.stop','host','host','ok','{}'))
+            conn.commit()
+            h.reply(202,{'stopping':True,'deadline_seconds':25})
+            lifecycle.stop(h.server)
+            return
         if action==('GET','/admin/status'):
+            import lifecycle
             import ollama_client
-            return h.reply(200,dict(version=VERSION,ollama=ollama_client.available(),active_users=conn.execute("SELECT count(*) FROM auth_users WHERE status='active'").fetchone()[0],active_sessions=conn.execute('SELECT count(*) FROM auth_sessions WHERE revoked=0 AND access_expires>?',(time.time(),)).fetchone()[0],queue_len=conn.execute("SELECT count(*) FROM mind_tasks WHERE status IN ('queued','running')").fetchone()[0]))
+            return h.reply(200,dict(version=VERSION,resources=lifecycle.stats(core.DATA),ollama=ollama_client.available(),active_users=conn.execute("SELECT count(*) FROM auth_users WHERE status='active'").fetchone()[0],active_sessions=conn.execute('SELECT count(*) FROM auth_sessions WHERE revoked=0 AND access_expires>?',(time.time(),)).fetchone()[0],queue_len=conn.execute("SELECT count(*) FROM mind_tasks WHERE status IN ('queued','running')").fetchone()[0]))
         if action==('GET','/admin/errors'):
             rows=conn.execute("SELECT updated,error FROM mind_tasks WHERE status='failed' ORDER BY updated DESC LIMIT 100")
             return h.reply(200,{'errors':[{'at':at,'code':code,'module':'mind','message':'Ошибка задачи'} for at,code in rows]})

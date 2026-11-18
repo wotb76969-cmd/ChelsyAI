@@ -148,6 +148,10 @@ class AdminApp:
         self.err_text = tk.Text(self.errors_tab, height=24, bg='#12132a', fg='#E8E6F5')
         self.err_text.pack(fill='both', expand=True, padx=8, pady=8)
         ttk.Button(self.errors_tab, text='Обновить', command=self.refresh_errors).pack(anchor='w', padx=8, pady=4)
+        def stop():
+            if messagebox.askyesno('Остановить Host','Новые задачи перестанут приниматься. Прервать работу Host?'):
+                self._bg(lambda:self.api.call('POST','/api/v3/admin/stop',{'confirm':True}),lambda data:messagebox.showinfo('Host','Получена команда остановки.'))
+        ttk.Button(self.status_tab,text='Остановить Host',command=stop).pack(anchor='w',padx=8)
         self.refresh_status()
         self.refresh_users()
         self.refresh_errors()

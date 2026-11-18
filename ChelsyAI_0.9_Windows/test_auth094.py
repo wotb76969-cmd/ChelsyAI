@@ -148,6 +148,22 @@ class Mind094Test(unittest.TestCase):
             decoded.write_bytes(self.engine.read(art))
             validate_artifact(fmt,decoded)
 
+    def test_pdf_local_zoom_and_opening_action(self):
+        from pypdf import PdfWriter
+        from pypdf.generic import DictionaryObject, NameObject
+
+        spec = ArtifactSpec('pdf', 'Проверка', 'ru', [
+            {'heading': 'Отчёт', 'paragraphs': ['Контрольная строка.']},
+        ])
+        built = build_artifact(spec, Path(self.tmp.name))
+        validate_artifact('pdf', built.path)
+        modified = Path(self.tmp.name) / 'opening-action.pdf'
+        writer = PdfWriter(clone_from=built.path)
+        writer.root_object[NameObject('/OpenAction')] = DictionaryObject()
+        writer.write(modified)
+        with self.assertRaises(ValueError):
+            validate_artifact('pdf', modified)
+
     def test_idor_blocked(self):
         other = create_user(self.conn, 'other@example.com', 'correct-horse-battery')
         self.conn.commit()

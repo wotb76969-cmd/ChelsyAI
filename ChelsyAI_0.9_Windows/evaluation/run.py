@@ -19,6 +19,7 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('suite',choices=['functional','documents'])
     parser.add_argument('--out',type=Path,required=True)
+    parser.add_argument('--resume',action='store_true',help='Keep completed case IDs in this evidence folder')
     args=parser.parse_args()
     args.out.mkdir(parents=True,exist_ok=True)
     out=args.out/(args.suite+'.jsonl')
@@ -39,7 +40,9 @@ def main():
         password=secrets.token_urlsafe(32)
         with core.db() as conn:auth.create_user(conn,email,password)
         rows=[json.loads(s) for s in (HERE/(args.suite+'.jsonl')).read_text().splitlines()]
-        with out.open('w',encoding='utf8') as f:
+        seen={json.loads(line)['id'] for line in out.read_text().splitlines()} if args.resume and out.exists() else set()
+        rows=[r for r in rows if r['id'] not in seen]
+        with out.open('a' if args.resume else 'w',encoding='utf8') as f:
             for i,row in enumerate(rows):
                 if i%5==0:
                     status,session=call('/auth/login',dict(email=email,password=password))
@@ -47,7 +50,7 @@ def main():
                     token=session['access_token']
                 start=time.monotonic()
                 code,result=call('/mind/run',{'message':row['prompt'],'idempotency_key':row['id']})
-                record=dict(**row,http=code,seconds=round(time.monotonic()-start,2),response=result)
+                record=dict(**row,runtime_sha256=hashlib.sha256((HERE.parent/'mind/runtime.py').read_bytes()).hexdigest(),http=code,seconds=round(time.monotonic()-start,2),response=result)
                 if result.get('artifact_id'):
                     status,blob=call('/artifacts/'+result['artifact_id']+'/download',raw=True)
                     if status==200:

@@ -98,7 +98,7 @@ def train(epochs: int = 8, lr: float = 0.35) -> dict:
     out = DATA / 'router_weights_v1.json'
     TaskRouter(payload).save(out)
     (DATA / 'router_train_report.json').write_text(
-        json.dumps(payload['metrics'] | {'weights_path': str(out), 'weights_sha256': file_sha(out)},
+        json.dumps(payload['metrics'] | {'weights_path': out.name, 'weights_sha256': file_sha(out)},
                    ensure_ascii=False, indent=2),
         encoding='utf-8',
     )

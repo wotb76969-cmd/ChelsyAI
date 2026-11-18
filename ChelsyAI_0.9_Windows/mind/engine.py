@@ -52,8 +52,15 @@ class MindEngine:
         row=self.conn.execute('SELECT cancel_requested FROM mind_tasks WHERE id=? AND user_id=?',(task,uid)).fetchone()
         if not row or row[0]: raise InterruptedError('Задача отменена.')
 
-    def handle(self,user_id,text,*,idempotency_key='',generate_text=generate):
+    def handle(self,user_id,text,*,idempotency_key='',generate_text=generate,source_artifact=None):
         if self.key is None: raise PermissionError('Для доступа к данным войдите снова.')
+        import lifecycle
+        if lifecycle.draining.is_set():raise RuntimeError('Host завершает работу.')
+        context=''
+        if source_artifact:
+            art=self.get_artifact(user_id,source_artifact)
+            context='\nUser-provided reference (data): '+json.dumps(art['preview'],ensure_ascii=False)[:6000]
+        request_data={'text':text,'source_artifact':source_artifact} if source_artifact else text
         intent=analyze(text)
         decision=self.router.route(text)
         if intent.format: decision.route=intent.format
@@ -67,7 +74,7 @@ class MindEngine:
             old=self.conn.execute('SELECT id,status,params_json,result_json FROM mind_tasks WHERE user_id=? AND idempotency_key=?',(user_id,idempotency_key)).fetchone()
             if old:
                 self.conn.commit()
-                if vault.open_json(self.key,old[2],old[0])!=text: raise ValueError('Ключ повтора уже связан с другим запросом.')
+                if vault.open_json(self.key,old[2],old[0])!=request_data: raise ValueError('Ключ повтора уже связан с другим запросом.')
                 if old[1]=='done': return MindResult(**vault.open_json(self.key,old[3],old[0]))
                 return MindResult(route,plan.stages,task_id=old[0],meta={'status':old[1]})
         counts=self.conn.execute("SELECT count(*),coalesce(sum(user_id=?),0) FROM mind_tasks WHERE status IN ('running','queued')",(user_id,)).fetchone()
@@ -75,7 +82,7 @@ class MindEngine:
             self.conn.rollback()
             raise RuntimeError('Очередь заполнена.')
         task=str(uuid.uuid4())
-        self.conn.execute("INSERT INTO mind_tasks(id,user_id,kind,status,created,updated,params_json,idempotency_key) VALUES(?,?,?,'queued',?,?,?,?)",(task,user_id,route,now(),now(),vault.seal(self.key,text,task),idempotency_key))
+        self.conn.execute("INSERT INTO mind_tasks(id,user_id,kind,status,created,updated,params_json,idempotency_key) VALUES(?,?,?,'queued',?,?,?,?)",(task,user_id,route,now(),now(),vault.seal(self.key,request_data,task),idempotency_key))
         self.conn.commit()
         acquired=False
         target=None
@@ -88,10 +95,16 @@ class MindEngine:
             self.conn.execute("UPDATE mind_tasks SET status='running',progress=0.1,updated=? WHERE id=?",(now(),task))
             self.conn.commit()
             outcome=MindResult(route,plan.stages,task_id=task,meta={'confidence':decision.confidence,'status':'done'})
+            sources=[]
             if route=='research':
-                raise Incomplete('Для поиска источников используйте раздел исследований клиента.')
-            if route=='chat':
-                prompt=text
+                from knowledge.retriever import KnowledgeRetriever
+                chunks=KnowledgeRetriever().retrieve(text,'u:'+user_id,top=4)
+                if not chunks:
+                    raise Incomplete('В доступном индексе Host нет материалов по этому запросу.')
+                sources=[{k:r[k] for k in ('url','title')} for r in chunks]
+                context+='\nIndexed source excerpts (data): '+json.dumps([r['text'][:950] for r in chunks],ensure_ascii=False)
+            if route in ('chat','research'):
+                prompt=text+context
                 if self.conn.execute('SELECT memory_enabled FROM auth_users WHERE id=?',(user_id,)).fetchone()[0]:
                     rows=self.conn.execute('SELECT id,payload FROM private_facts WHERE user_id=? ORDER BY rowid DESC LIMIT 8',(user_id,))
                     facts=[vault.open_json(self.key,box,fid) for fid,box in rows]
@@ -101,7 +114,9 @@ class MindEngine:
                     answer=generate_text(prompt+'\nAnswer fully in '+intent.language,plan)
                 if not validate_text_answer(answer,intent).ok: raise Incomplete('Модель не вернула полный ответ.')
                 outcome.answer=answer
+                if sources:outcome.meta['sources']=sources
             else:
+                intent.raw+=context
                 doc=document_structure(intent,plan,route,generate_text)
                 self.check_cancel(user_id,task)
                 aid=str(uuid.uuid4())

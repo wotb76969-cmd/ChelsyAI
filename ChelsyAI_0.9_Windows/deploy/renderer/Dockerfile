@@ -5,5 +5,6 @@ WORKDIR /opt/chelsy
 COPY mind/artifacts/builder.py /opt/chelsy/mind/artifacts/builder.py
 COPY assets/fonts /opt/chelsy/assets/fonts
 COPY deploy/renderer/entry.py /opt/chelsy/mind/artifacts/entry.py
+RUN chmod -R a+rX /opt/chelsy
 USER 65532:65532
 ENTRYPOINT ["python","/opt/chelsy/mind/artifacts/entry.py"]
