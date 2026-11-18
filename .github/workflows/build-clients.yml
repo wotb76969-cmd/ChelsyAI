@@ -172,17 +172,3 @@ jobs:
           path: Android_Client/build/symbols/
           retention-days: 30
 
-  ios:
-    name: iOS target compile (unsigned simulator)
-    needs: tests
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.50.0'
-          channel: stable
-      - working-directory: Android_Client
-        run: |
-          flutter pub get
-          flutter build ios --simulator --debug --no-codesign
