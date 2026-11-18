@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from client_api import NoRedirect,validate_host
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener, HTTPSHandler
 
@@ -11,7 +12,7 @@ class AuthError(Exception):
 
 
 def _call(host: str, path: str, body: dict | None = None, bearer: str | None = None, timeout: int = 20) -> dict:
-    host = host.rstrip('/')
+    host = validate_host(host)
     data = None if body is None else json.dumps(body).encode('utf-8')
     headers = {'Accept': 'application/json'}
     if data is not None:
@@ -20,7 +21,7 @@ def _call(host: str, path: str, body: dict | None = None, bearer: str | None = N
         headers['Authorization'] = 'Bearer ' + bearer
     req = Request(host + path, data=data, headers=headers, method='POST' if data is not None else 'GET')
     try:
-        with build_opener(HTTPSHandler()).open(req, timeout=timeout) as resp:
+        with build_opener(HTTPSHandler(),NoRedirect()).open(req, timeout=timeout) as resp:
             return json.load(resp)
     except HTTPError as exc:
         try:

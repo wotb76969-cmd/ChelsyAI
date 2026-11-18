@@ -1,0 +1,50 @@
+{"id": "txt-01", "lang": "ru", "format": "txt", "prompt": "Создай TXT на 1 раздел для чтения книги. Краткая инструкция."}
+{"id": "txt-02", "lang": "ru", "format": "txt", "prompt": "Создай TXT на 1 раздел для сортировки стекла. Краткая инструкция."}
+{"id": "txt-03", "lang": "ru", "format": "txt", "prompt": "Создай TXT на 1 раздел для ухода за комнатным растением. Краткая инструкция."}
+{"id": "txt-04", "lang": "ru", "format": "txt", "prompt": "Создай TXT на 1 раздел для поездки на поезде. Краткая инструкция."}
+{"id": "txt-05", "lang": "ru", "format": "txt", "prompt": "Создай TXT на 1 раздел для подготовки к экзамену. Краткая инструкция."}
+{"id": "txt-06", "lang": "ru", "format": "txt", "prompt": "Создай TXT на 1 раздел для ведения домашнего бюджета. Краткая инструкция."}
+{"id": "txt-07", "lang": "en", "format": "txt", "prompt": "Create a TXT with 1 section about storing photos. Give brief practical guidance."}
+{"id": "txt-08", "lang": "en", "format": "txt", "prompt": "Create a TXT with 1 section about running a meeting. Give brief practical guidance."}
+{"id": "txt-09", "lang": "en", "format": "txt", "prompt": "Create a TXT with 1 section about learning a language. Give brief practical guidance."}
+{"id": "txt-10", "lang": "en", "format": "txt", "prompt": "Create a TXT with 1 section about using a library. Give brief practical guidance."}
+{"id": "docx-01", "lang": "ru", "format": "docx", "prompt": "Создай DOCX на 1 страницу для чтения книги. Краткая инструкция."}
+{"id": "docx-02", "lang": "ru", "format": "docx", "prompt": "Создай DOCX на 1 страницу для сортировки стекла. Краткая инструкция."}
+{"id": "docx-03", "lang": "ru", "format": "docx", "prompt": "Создай DOCX на 1 страницу для ухода за комнатным растением. Краткая инструкция."}
+{"id": "docx-04", "lang": "ru", "format": "docx", "prompt": "Создай DOCX на 1 страницу для поездки на поезде. Краткая инструкция."}
+{"id": "docx-05", "lang": "ru", "format": "docx", "prompt": "Создай DOCX на 1 страницу для подготовки к экзамену. Краткая инструкция."}
+{"id": "docx-06", "lang": "ru", "format": "docx", "prompt": "Создай DOCX на 1 страницу для ведения домашнего бюджета. Краткая инструкция."}
+{"id": "docx-07", "lang": "en", "format": "docx", "prompt": "Create a DOCX with 1 page about storing photos. Give brief practical guidance."}
+{"id": "docx-08", "lang": "en", "format": "docx", "prompt": "Create a DOCX with 1 page about running a meeting. Give brief practical guidance."}
+{"id": "docx-09", "lang": "en", "format": "docx", "prompt": "Create a DOCX with 1 page about learning a language. Give brief practical guidance."}
+{"id": "docx-10", "lang": "en", "format": "docx", "prompt": "Create a DOCX with 1 page about using a library. Give brief practical guidance."}
+{"id": "pdf-01", "lang": "ru", "format": "pdf", "prompt": "Создай PDF на 1 страницу для чтения книги. Краткая инструкция."}
+{"id": "pdf-02", "lang": "ru", "format": "pdf", "prompt": "Создай PDF на 1 страницу для сортировки стекла. Краткая инструкция."}
+{"id": "pdf-03", "lang": "ru", "format": "pdf", "prompt": "Создай PDF на 1 страницу для ухода за комнатным растением. Краткая инструкция."}
+{"id": "pdf-04", "lang": "ru", "format": "pdf", "prompt": "Создай PDF на 1 страницу для поездки на поезде. Краткая инструкция."}
+{"id": "pdf-05", "lang": "ru", "format": "pdf", "prompt": "Создай PDF на 1 страницу для подготовки к экзамену. Краткая инструкция."}
+{"id": "pdf-06", "lang": "ru", "format": "pdf", "prompt": "Создай PDF на 1 страницу для ведения домашнего бюджета. Краткая инструкция."}
+{"id": "pdf-07", "lang": "en", "format": "pdf", "prompt": "Create a PDF with 1 page about storing photos. Give brief practical guidance."}
+{"id": "pdf-08", "lang": "en", "format": "pdf", "prompt": "Create a PDF with 1 page about running a meeting. Give brief practical guidance."}
+{"id": "pdf-09", "lang": "en", "format": "pdf", "prompt": "Create a PDF with 1 page about learning a language. Give brief practical guidance."}
+{"id": "pdf-10", "lang": "en", "format": "pdf", "prompt": "Create a PDF with 1 page about using a library. Give brief practical guidance."}
+{"id": "pptx-01", "lang": "ru", "format": "pptx", "prompt": "Создай PPTX на 2 слайда для чтения книги. Краткая инструкция."}
+{"id": "pptx-02", "lang": "ru", "format": "pptx", "prompt": "Создай PPTX на 2 слайда для сортировки стекла. Краткая инструкция."}
+{"id": "pptx-03", "lang": "ru", "format": "pptx", "prompt": "Создай PPTX на 2 слайда для ухода за комнатным растением. Краткая инструкция."}
+{"id": "pptx-04", "lang": "ru", "format": "pptx", "prompt": "Создай PPTX на 2 слайда для поездки на поезде. Краткая инструкция."}
+{"id": "pptx-05", "lang": "ru", "format": "pptx", "prompt": "Создай PPTX на 2 слайда для подготовки к экзамену. Краткая инструкция."}
+{"id": "pptx-06", "lang": "ru", "format": "pptx", "prompt": "Создай PPTX на 2 слайда для ведения домашнего бюджета. Краткая инструкция."}
+{"id": "pptx-07", "lang": "en", "format": "pptx", "prompt": "Create a PPTX with 2 slides about storing photos. Give brief practical guidance."}
+{"id": "pptx-08", "lang": "en", "format": "pptx", "prompt": "Create a PPTX with 2 slides about running a meeting. Give brief practical guidance."}
+{"id": "pptx-09", "lang": "en", "format": "pptx", "prompt": "Create a PPTX with 2 slides about learning a language. Give brief practical guidance."}
+{"id": "pptx-10", "lang": "en", "format": "pptx", "prompt": "Create a PPTX with 2 slides about using a library. Give brief practical guidance."}
+{"id": "xlsx-01", "lang": "ru", "format": "xlsx", "prompt": "Сделай XLSX с итогами. Статьи: материалы 20, доставка 6 рублей."}
+{"id": "xlsx-02", "lang": "ru", "format": "xlsx", "prompt": "Сделай XLSX с итогами. Статьи: материалы 21, доставка 7 рублей."}
+{"id": "xlsx-03", "lang": "ru", "format": "xlsx", "prompt": "Сделай XLSX с итогами. Статьи: материалы 22, доставка 8 рублей."}
+{"id": "xlsx-04", "lang": "ru", "format": "xlsx", "prompt": "Сделай XLSX с итогами. Статьи: материалы 23, доставка 9 рублей."}
+{"id": "xlsx-05", "lang": "ru", "format": "xlsx", "prompt": "Сделай XLSX с итогами. Статьи: материалы 24, доставка 10 рублей."}
+{"id": "xlsx-06", "lang": "ru", "format": "xlsx", "prompt": "Сделай XLSX с итогами. Статьи: материалы 25, доставка 11 рублей."}
+{"id": "xlsx-07", "lang": "en", "format": "xlsx", "prompt": "Create an XLSX budget with totals: supplies 26, shipping 12 dollars."}
+{"id": "xlsx-08", "lang": "en", "format": "xlsx", "prompt": "Create an XLSX budget with totals: supplies 27, shipping 13 dollars."}
+{"id": "xlsx-09", "lang": "en", "format": "xlsx", "prompt": "Create an XLSX budget with totals: supplies 28, shipping 14 dollars."}
+{"id": "xlsx-10", "lang": "en", "format": "xlsx", "prompt": "Create an XLSX budget with totals: supplies 29, shipping 15 dollars."}

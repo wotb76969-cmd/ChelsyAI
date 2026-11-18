@@ -45,7 +45,8 @@ MIME = {
 
 def safe_filename(title: str, ext: str) -> str:
     base = DANGEROUS_NAME.sub('_', (title or 'document').strip())[:80] or 'document'
-    base = base.replace('..', '_')
+    base = re.sub(r'[\x00-\x1f\x7f]', '_', base).replace('..', '_').strip('. ') or 'document'
+    if base.split('.')[0].upper() in {'CON','AUX','PRN','NUL',*(f'COM{i}' for i in range(1,10)),*(f'LPT{i}' for i in range(1,10))}: base = '_' + base
     return f'{base}.{ext}'
 
 
@@ -81,7 +82,8 @@ def _write_docx(spec: ArtifactSpec, path: Path) -> None:
     from docx.oxml.ns import qn
     doc = Document()
     doc.add_heading(spec.title, level=0)
-    for sec in spec.sections:
+    for i,sec in enumerate(spec.sections):
+        if i: doc.add_page_break()
         if sec.get('heading'):
             doc.add_heading(sec['heading'], level=1)
         for p in sec.get('paragraphs') or []:
@@ -125,19 +127,18 @@ def _write_pdf(spec: ArtifactSpec, path: Path) -> None:
             break
     font = 'Chelsy' if unicode_ok else 'Helvetica'
 
-    def _txt(s: str) -> str:
-        if unicode_ok:
-            return s
-        return s.encode('ascii', 'replace').decode('ascii')
+    if not unicode_ok:
+        raise ValueError('Для PDF требуется встроенный шрифт Unicode.')
 
     def write(text: str, size: int = 11, h: float = 6):
         pdf.set_font(font, size=size)
         pdf.set_x(pdf.l_margin)
-        pdf.multi_cell(pdf.epw, h, _txt(text))
+        pdf.multi_cell(pdf.epw, h, text)
 
     write(spec.title, size=14, h=8)
     pdf.ln(4)
-    for sec in spec.sections:
+    for i,sec in enumerate(spec.sections):
+        if i: pdf.add_page()
         if sec.get('heading'):
             write(sec['heading'], size=12, h=7)
         for p in sec.get('paragraphs') or []:
@@ -233,28 +234,20 @@ def _write_xlsx(spec: ArtifactSpec, path: Path) -> None:
                 ws.append([str(h) for h in headers])
                 for cell in ws[1]:
                     cell.font = Font(bold=True)
+                    cell.data_type = 's'
             for row in rows:
-                # Treat formula-like cells as text unless explicitly marked safe
-                out = []
-                for cell in row:
-                    s = str(cell)
-                    if s.startswith('=') and not table.get('allow_formulas'):
-                        s = "'" + s  # force text
-                    out.append(s if not table.get('allow_formulas') else cell)
-                ws.append(out)
-            # Safe SUM example only when requested
-            if table.get('add_total') and headers:
-                col = len(headers)
-                start = 2
-                end = 1 + len(rows)
-                # verified simple SUM only
-                formula = f'=SUM({chr(64 + col)}{start}:{chr(64 + col)}{end})'
-                total_row = [''] * (col - 1) + ['Итого', formula]
-                if col == 1:
-                    total_row = [formula]
-                elif col == 2:
-                    total_row = ['Итого', formula]
-                ws.append(total_row[:col])
+                ws.append(row)
+                for cell in ws[ws.max_row]:
+                    if isinstance(cell.value,str): cell.data_type='s'
+            if table.get('add_total') and headers and rows:
+                from openpyxl.utils import get_column_letter
+                col=len(headers)
+                letter=get_column_letter(col)
+                last=ws.max_row
+                if col>1: ws.cell(last+1,1,'Итого' if spec.language=='ru' else 'Total')
+                ws.cell(last+1,col,f'=SUM({letter}2:{letter}{last})')
+            ws.freeze_panes='A2'
+            ws.auto_filter.ref=f'A1:{ws.cell(len(rows)+1,len(headers)).coordinate}'
     if spec.sources:
         src = wb.create_sheet('Источники')
         src.append(['Источник'])
@@ -302,27 +295,60 @@ def validate_artifact(fmt: str, path: Path) -> None:
         if not text.strip():
             raise ValueError('Пустой TXT')
         return
-    if fmt in ('docx', 'pptx', 'xlsx'):
-        # OOXML must be a valid zip
-        with zipfile.ZipFile(path, 'r') as zf:
-            names = zf.namelist()
-            if '[Content_Types].xml' not in names:
-                raise ValueError(f'Повреждённый {fmt.upper()}')
-            # Reject embedded macros / OLE
-            for n in names:
-                lower = n.lower()
-                if lower.endswith('.bin') and 'vba' in lower:
-                    raise ValueError('Макросы запрещены')
-                if 'activex' in lower:
-                    raise ValueError('ActiveX запрещён')
+    if path.stat().st_size>25*1024**2:
+        raise ValueError('Файл превышает лимит.')
+    if fmt in ('docx','pptx','xlsx'):
+        from lxml import etree
+        main={'docx':'word/document.xml','pptx':'ppt/presentation.xml','xlsx':'xl/workbook.xml'}[fmt]
+        with zipfile.ZipFile(path) as zf:
+            entries=zf.infolist()
+            names=set(zf.namelist())
+            if (len(entries)>2048 or len(entries)!=len(names) or main not in names or
+                    '[Content_Types].xml' not in names or sum(x.file_size for x in entries)>64*1024**2):
+                raise ValueError('Неверная структура или размер OOXML.')
+            for entry in entries:
+                name=entry.filename
+                low=name.lower()
+                if (name.startswith('/') or '..' in name.split('/') or chr(92) in name or ':' in name or
+                        entry.flag_bits & 1 or entry.file_size>12*1024**2 or
+                        any(x in low for x in ('vbaproject','activex','/embeddings/','externallinks','connections.xml','querytables'))):
+                    raise ValueError('Опасный объект в документе.')
+                if not low.endswith(('.xml','.rels')):continue
+                raw=zf.read(entry)
+                if b'<!DOCTYPE' in raw or b'<!ENTITY' in raw:raise ValueError('DTD запрещён.')
+                parser=etree.XMLParser(resolve_entities=False,no_network=True,load_dtd=False)
+                node=etree.fromstring(raw,parser)
+                if low.endswith('.rels') and node.xpath('//*[@TargetMode="External"]'):
+                    raise ValueError('Внешние связи запрещены.')
+                if fmt=='xlsx':
+                    for formula in node.xpath('//*[local-name()="f"]/text()'):
+                        if not re.fullmatch(r'SUM\([A-Z]{1,3}[1-9]\d*:[A-Z]{1,3}[1-9]\d*\)',formula):
+                            raise ValueError('Неподдерживаемая формула.')
+                if node.xpath('//*[local-name()="instrText" or local-name()="fldSimple" or local-name()="oleObj"]'):
+                    raise ValueError('Активное поле документа запрещено.')
         return
-    if fmt == 'pdf':
-        data = path.read_bytes()[:8]
-        if not data.startswith(b'%PDF'):
-            raise ValueError('Некорректный PDF')
-        # Extractable text check — basic
-        raw = path.read_bytes()
-        if b'/JavaScript' in raw or b'/JS' in raw:
-            raise ValueError('PDF с JavaScript запрещён')
+    if fmt=='pdf':
+        from pypdf import PdfReader
+        reader=PdfReader(path,strict=True)
+        catalog=reader.trailer['/Root']
+        from pypdf.generic import ArrayObject, IndirectObject, NullObject, NumberObject, FloatObject
+        # fpdf2 sets the initial zoom with a local page destination.
+        opening = catalog.get('/OpenAction')
+        if opening is not None:
+            allowed_zoom = (
+                isinstance(opening, ArrayObject) and len(opening) == 3
+                and isinstance(opening[0], IndirectObject)
+                and opening[1] == '/FitH'
+                and isinstance(opening[2], (NullObject, NumberObject, FloatObject))
+                and opening[0] == reader.pages[0].indirect_reference
+            )
+            if not allowed_zoom:
+                raise ValueError('Действие при открытии PDF запрещено.')
+        if reader.is_encrypted or any(k in catalog for k in ('/AA','/AcroForm','/Names')):
+            raise ValueError('Активное содержимое PDF запрещено.')
+        if not 1<=len(reader.pages)<=60 or not all((p.extract_text() or '').strip() for p in reader.pages):
+            raise ValueError('Проверка страниц и текста PDF не пройдена.')
+        if any('/Annots' in page or '/AA' in page for page in reader.pages):
+            raise ValueError('Активные аннотации PDF запрещены.')
         return
     raise ValueError('Неизвестный формат')

@@ -5,7 +5,12 @@ import json
 import uuid
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlsplit
-from urllib.request import ProxyHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
+
+
+class NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self,*args):
+        return None
 
 
 class HostError(RuntimeError):
@@ -39,7 +44,7 @@ class HostClient:
         self.token_provider = token_provider        # callable(refresh=False) -> access token
         self.timeout = timeout
         # Never send private credentials through a system proxy.
-        self.opener = build_opener(ProxyHandler({}))
+        self.opener = build_opener(ProxyHandler({}),NoRedirect())
 
     def _request(self, method, path, payload=None, refresh=False):
         token = self.token_provider(refresh)

@@ -81,17 +81,27 @@ def resolve_access_token(conn: sqlite3.Connection, token: str) -> dict | None:
 
 def refresh_session(conn: sqlite3.Connection, refresh_token: str) -> dict:
     """Rotate refresh token; reuse detection revokes the family."""
-    if not refresh_token:
+    if not isinstance(refresh_token,str) or not 20 <= len(refresh_token) <= 200:
         raise ValueError('invalid_refresh')
+    if not conn.in_transaction:
+        conn.execute('BEGIN IMMEDIATE')
     h = _hash(refresh_token)
+    reused = conn.execute('SELECT session_id FROM used_refresh WHERE digest=?',(h,)).fetchone()
+    if reused:
+        conn.execute('UPDATE auth_sessions SET revoked=1 WHERE id=?',reused)
+        raise ValueError('refresh_reuse')
     row = conn.execute(
-        '''SELECT id, user_id, refresh_expires, refresh_hash, is_admin, revoked, refresh_family
+        '''SELECT id, user_id, refresh_expires, refresh_hash, is_admin, revoked, refresh_family, last_seen
            FROM auth_sessions WHERE refresh_hash=? OR previous_refresh_hash=?''',
         (h, h),
     ).fetchone()
     if not row:
         raise ValueError('invalid_refresh')
-    sid, user_id, refresh_exp, current_hash, is_admin, revoked, family = row
+    sid, user_id, refresh_exp, current_hash, is_admin, revoked, family, seen = row
+    active = conn.execute("SELECT 1 FROM auth_users WHERE id=? AND status='active'",(user_id,)).fetchone()
+    if not active or (is_admin and time.time()-datetime.fromisoformat(seen).timestamp()>ADMIN_IDLE_TTL_SEC):
+        conn.execute('UPDATE auth_sessions SET revoked=1 WHERE id=?',(sid,))
+        raise ValueError('invalid_refresh')
     if revoked or time.time() > float(refresh_exp):
         raise ValueError('invalid_refresh')
     # Reuse of an already-rotated token → revoke family
@@ -104,12 +114,13 @@ def refresh_session(conn: sqlite3.Connection, refresh_token: str) -> dict:
     access = new_token(24)
     new_refresh = new_token(32)
     now = time.time()
+    conn.execute('INSERT INTO used_refresh VALUES(?,?)',(h,sid))
     family = family or sid
     conn.execute(
         '''UPDATE auth_sessions SET access_hash=?, previous_refresh_hash=refresh_hash,
            refresh_hash=?, access_expires=?, refresh_expires=?, last_seen=?, refresh_family=?
            WHERE id=?''',
-        (_hash(access), _hash(new_refresh), now + ACCESS_TTL_SEC, now + REFRESH_TTL_SEC,
+        (_hash(access), _hash(new_refresh), now + ACCESS_TTL_SEC, refresh_exp,
          _now(), family, sid),
     )
     return {
@@ -117,7 +128,7 @@ def refresh_session(conn: sqlite3.Connection, refresh_token: str) -> dict:
         'access_token': access,
         'refresh_token': new_refresh,
         'access_expires_in': ACCESS_TTL_SEC,
-        'refresh_expires_in': REFRESH_TTL_SEC,
+        'refresh_expires_in': max(0,int(refresh_exp-now)),
         'token_type': 'Bearer',
         'user_id': user_id,
         'is_admin': bool(is_admin),

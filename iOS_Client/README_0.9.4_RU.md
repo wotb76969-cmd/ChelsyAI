@@ -1,19 +1,7 @@
-# Chelsy AI iOS 0.9.4
+# Chelsy AI для iOS 17+
 
-В исходной поставке 0.9.3 нативного iOS-target не было. Для 0.9.4:
+Проект Xcode находится в Android_Client/ios/Runner.xcworkspace. Оба мобильных клиента используют один исходный код Flutter 3.50.0. Bundle ID по умолчанию задаёт проект Runner. Согласуйте его со своим идентификатором в Apple Developer до подписи.
 
-## План сборки
+На macOS установите Xcode с iOS SDK, принятыми условиями лицензии и Flutter 3.50.0. Проверьте инструменты через `flutter doctor -v`. В каталоге Android_Client выполните `flutter pub get`, `flutter analyze`, `flutter test`, затем `flutter build ios --simulator --debug --no-codesign`. Откройте Runner.xcworkspace, выберите Runner → Signing & Capabilities → свою Team. Проверьте Keychain Sharing, Deployment Target 17.0 и сертификат распространения. Для App Store Connect используйте Product → Archive → Distribute App или `flutter build ipa --release` с настроенными идентификатором, сертификатом и профилем. Только владелец Apple Developer определяет канал публикации.
 
-1. Использовать тот же Flutter-проект `Android_Client` (переименовать в общий `mobile` при желании) и выполнить:
-   ```bash
-   cd Android_Client
-   flutter create --platforms=ios .
-   ```
-2. Включить App Transport Security только к своему Host HTTPS.
-3. Хранить refresh-токен в Keychain (`flutter_secure_storage` iOS options, `synchronizable: false`).
-4. Auth: `POST /api/v3/auth/login` на адрес Host (см. `lib/src/own_auth.dart`).
-5. Подпись и канал распространения — на macOS с Xcode; TestFlight/AltStore не должны быть обязательным пользовательским путём (NET-04).
-
-## Ограничение этой среды
-
-macOS/Xcode здесь отсутствует — подписанный IPA не собран. Каркас Auth и документация подготовлены; воспроизводимая сборка — на машине с Apple toolchain.
+В приложении задайте HTTPS-адрес Host и войдите своим email и паролем. Кнопка документов в верхней панели открывает Chelsy Mind. Откройте диалог сохранения готового файла и выберите «Сохранить в Файлы». Для проверки на устройстве повторите скачивание из мобильной сети, отзыв сессии и повторный вход после перезапуска. Фактический статус сборки и проверки на устройстве приведён в ACCEPTANCE_0.9.4_RU.md.

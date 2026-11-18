@@ -7,21 +7,12 @@ Tailscale и Supabase больше не обязательны в продукт
 ## С чего начать
 - **[docs/0.9.4/](docs/0.9.4/)** — ТЗ, архитектура, сеть, матрица безопасности, отчёт ограничений.
 - **[RELEASE_NOTES_0.9.4_RU.md](RELEASE_NOTES_0.9.4_RU.md)** — что вошло в 0.9.4.
-- [Установка.md](Установка.md) — база установки (обновляется под прямой HTTPS).
+- [Распаковка и установка 0.9.4](INSTALL_0.9.4_RU.md) · [Результаты испытаний и открытые требования](ACCEPTANCE_0.9.4_RU.md).
 - Документы 0.9.3 сохранены для истории регрессий.
 
-## Быстрый старт Host (own Auth)
+## Первый запуск Host
 
-```bash
-export CHELSY_AUTH_MODE=own
-export CHELSY_ADMIN_EMAILS='admin1@example.com,admin2@example.com'
-export CHELSY_ADMIN_PASSWORD='длинный-пароль-не-короче-15'
-cd ChelsyAI_0.9_Windows
-python migrations.py migrate
-python host_server.py
-```
-
-Панель администратора: `python admin_panel.py` (локально).
+Распакуйте архив в новый каталог и следуйте [инструкции для Windows и Linux](INSTALL_0.9.4_RU.md). При первом запуске `configure_accounts.py admins` запросит отдельный пароль для каждого из двух администраторов.
 
 ## Состав
 | Папка | Что внутри |

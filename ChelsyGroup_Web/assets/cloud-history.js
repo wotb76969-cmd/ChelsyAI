@@ -1,39 +1,24 @@
-/* Read-only Supabase history; all rows filtered by RLS as well as user_id. */
-const config = window.CHELSY_CONFIG || {};
-const status = document.querySelector('#status');
-const output = document.querySelector('#history');
-const refresh = document.querySelector('#refresh');
-const safe = v => typeof v === 'string' ? v : '';
-async function load() {
-  refresh.disabled = true;
-  try {
-    if (!config.supabaseUrl || !config.supabasePublishableKey) throw new Error('Supabase не настроен');
-    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm');
-    const supabase = createClient(config.supabaseUrl, config.supabasePublishableKey);
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) { status.textContent='Войдите в аккаунт Chelsy Group.'; return; }
-    // 0.9.3: hide messages deleted in Chelsy AI (migration 003). Falls back to the
-    // 0.9.2 query when the deleted_at column does not exist yet.
-    let {data, error} = await supabase.from('chelsy_ai_messages')
-      .select('role,content,created_at').eq('user_id',user.id).is('deleted_at', null)
-      .order('created_at',{ascending:true}).limit(500);
-    if (error) {
-      ({data, error} = await supabase.from('chelsy_ai_messages')
-        .select('role,content,created_at').eq('user_id',user.id)
-        .order('created_at',{ascending:true}).limit(500));
+const api=window.ChelsyAuth.request;
+const output=document.querySelector('#history'),status=document.querySelector('#status');
+let records=[];
+function draw(){
+  const query=document.querySelector('#query').value.toLocaleLowerCase();
+  output.replaceChildren();
+  for(const row of records.filter(r=>(r.question+' '+r.answer).toLocaleLowerCase().includes(query))){
+    const card=document.createElement('article');card.className='form-card';
+    for(const value of [row.created,row.question,row.answer]){
+      const p=document.createElement('p');p.textContent=value;card.append(p);
     }
-    if (error) throw error;
-    output.replaceChildren();
-    for (const message of (data || [])) {
-      const box=document.createElement('div');
-      box.className='bubble ' + (message.role==='user'?'user':'ai');
-      const title=document.createElement('strong'); title.textContent=message.role==='user'?'Вы':'Chelsy AI';
-      const body=document.createElement('div');body.textContent=safe(message.content);
-      box.append(title,body); output.append(box);
+    for(const [label,action] of [[row.favorite?'Убрать из избранного':'В избранное',()=>api('/history/'+row.id,{method:'POST',body:{favorite:!row.favorite}})],['Удалить',()=>confirm('Удалить этот диалог и сохранённый текст задания?')&&api('/history/'+row.id,{method:'DELETE'})]]){
+      const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=async()=>{try{if(await action())await load();}catch(e){status.textContent=e.message;}};card.append(b);
     }
-    status.textContent=`Сообщений: ${(data||[]).length}. Показаны последние синхронизированные данные.`;
-  } catch (error) {status.textContent='Не удалось загрузить историю. Проверьте SQL-миграции и подключение к Supabase.';}
-  finally {refresh.disabled=false;}
+    output.append(card);
+  }
 }
-refresh.addEventListener('click', load);
+async function load(){
+  try{records=(await api('/history')).history;draw();status.textContent='Диалогов: '+records.length;}
+  catch(e){status.textContent=e.status===401?'Войдите в кабинет.':'История недоступна. '+e.message;}
+}
+document.querySelector('#refresh').onclick=load;
+document.querySelector('#query').oninput=draw;
 load();

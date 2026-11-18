@@ -1,9 +1,9 @@
 ﻿$ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
-Write-Host 'Chelsy AI 0.9.3 - Windows build (Host + Client installers)' -ForegroundColor Cyan
+Write-Host 'Chelsy AI 0.9.4 - Windows build (Host + Client installers)' -ForegroundColor Cyan
 # Produces:
-#   installer\ChelsyAI_Host_Setup_0.9.3.exe    (Desktop + Host + Client + tools, for the owner's laptop)
-#   installer\ChelsyAI_Client_Setup_0.9.3.exe  (standalone client, no Ollama)
+#   installer\ChelsyAI_Host_Setup_0.9.4.exe    (Desktop + Host + Client + tools, for the owner's laptop)
+#   installer\ChelsyAI_Client_Setup_0.9.4.exe  (standalone client, no Ollama)
 #   installer\SHA256SUMS.txt
 # Optional Authenticode signing: set CHELSY_SIGN_PFX (path to .pfx) and CHELSY_SIGN_PASSWORD.
 # Unit tests are mandatory: a failing test stops the build.
@@ -72,7 +72,7 @@ try {
     Invoke-Checked 'Desktop build' { & $python -m PyInstaller @common --windowed --name ChelsyAI --icon assets\chelsy.ico `
         --add-data "assets;assets" --collect-all gradio --collect-all gradio_client --collect-all safehttpx `
         --collect-all huggingface_hub --collect-all groovy --collect-all orjson launcher.py }
-    Invoke-Checked 'Host build' { & $python -m PyInstaller @common --console --name ChelsyHost --icon assets\chelsy.ico host_server.py }
+    Invoke-Checked 'Host build' { & $python -m PyInstaller @common --console --name ChelsyHost --icon assets\chelsy.ico --hidden-import admin_panel --hidden-import configure_accounts --add-data "auth/common_passwords.txt;auth" --add-data "training/datasets/router_weights_v1.json;training/datasets" --add-data "assets/fonts;assets/fonts" host_server.py }
     Invoke-Checked 'Client build' { & $python -m PyInstaller --noconfirm --clean --onedir --version-file version_info.txt --windowed `
         --name ChelsyClient --icon assets\chelsy.ico --add-data "assets;assets" --add-data "site_supabase_public.json;." `
         --exclude-module gradio --exclude-module numpy --exclude-module pandas client.py }
@@ -97,7 +97,7 @@ try {
     $iscc = Find-Iscc
     Invoke-Checked 'Host installer' { & $iscc (Join-Path $PSScriptRoot 'ChelsyAI.iss') }
     Invoke-Checked 'Client installer' { & $iscc (Join-Path $PSScriptRoot 'CLIENT_ONLY.iss') }
-    $setups = @('installer\ChelsyAI_Host_Setup_0.9.3.exe', 'installer\ChelsyAI_Client_Setup_0.9.3.exe')
+    $setups = @('installer\ChelsyAI_Host_Setup_0.9.4.exe', 'installer\ChelsyAI_Client_Setup_0.9.4.exe')
     Sign-Files $setups
 
     $lines = foreach ($s in $setups) { (Get-FileHash $s -Algorithm SHA256).Hash.ToLower() + '  ' + (Split-Path $s -Leaf) }

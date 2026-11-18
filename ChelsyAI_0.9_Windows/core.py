@@ -28,6 +28,8 @@ from urllib.robotparser import RobotFileParser
 ROOT = Path(__file__).resolve().parent
 # Installation directory may be read-only: store user data in LocalAppData.
 DATA = (Path(os.environ['LOCALAPPDATA']) / 'ChelsyAI' / 'data') if os.name == 'nt' and (getattr(__import__('sys'), 'frozen', False) or os.environ.get('CHELSY_APPDATA') == '1') and os.environ.get('LOCALAPPDATA') else ROOT / 'data'
+if os.environ.get('CHELSY_DATA_DIR'):
+    DATA = Path(os.environ['CHELSY_DATA_DIR']).expanduser().resolve()
 DB_PATH = DATA / 'chelsy.db'
 USERS_PATH = DATA / 'users.json'
 MODEL = os.environ.get('CHELSY_MODEL', 'llama3.2:1b')

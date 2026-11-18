@@ -1,36 +1,13 @@
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
-/// Legacy Supabase session storage (migration). Prefer [SecureStore] for 0.9.4.
-class SecureSessionStorage extends LocalStorage {
-  SecureSessionStorage();
-
-  static const _key = 'chelsy_supabase_session';
-  final FlutterSecureStorage _storage = const FlutterSecureStorage(
-    aOptions: AndroidOptions(resetOnError: true),
-  );
-
-  @override
-  Future<void> initialize() async {}
-
-  @override
-  Future<bool> hasAccessToken() => _storage.containsKey(key: _key);
-
-  @override
-  Future<String?> accessToken() => _storage.read(key: _key);
-
-  @override
-  Future<void> removePersistedSession() => _storage.delete(key: _key);
-
-  @override
-  Future<void> persistSession(String persistSessionString) =>
-      _storage.write(key: _key, value: persistSessionString);
-}
 
 class StoredTokens {
-  StoredTokens({required this.host, required this.access, required this.refresh});
+  StoredTokens({
+    required this.host,
+    required this.access,
+    required this.refresh,
+  });
   final String host;
   final String access;
   final String refresh;
@@ -41,6 +18,10 @@ class SecureStore {
   static const _key = 'chelsy_own_auth_v1';
   static final FlutterSecureStorage _storage = const FlutterSecureStorage(
     aOptions: AndroidOptions(resetOnError: true),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.unlocked_this_device,
+      synchronizable: false,
+    ),
   );
 
   static Future<void> saveTokens({

@@ -64,3 +64,7 @@
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0,0,0,0); border: 0;
 }
+
+#preview,#mind-answer{white-space:pre-wrap;overflow-wrap:anywhere}textarea{width:100%;min-height:6em}button:focus-visible,a:focus-visible{outline:3px solid #bfa7ff} [hidden]{display:none!important}
+
+.page-cabinet .ambient{inset-inline:0;max-width:100vw}.cabinet-main{min-width:0;overflow-wrap:anywhere}.cabinet-main h1,.cabinet-main h2{font-size:clamp(1.6rem,4vw,3.3rem)}.cabinet-main input,.cabinet-main textarea{max-width:100%}

@@ -1,13 +1,12 @@
 name: chelsy_ai_client
-description: Chelsy AI 0.9.3 - Android client for your private Chelsy Host
+description: Chelsy AI 0.9.4 - mobile client for your private Chelsy Host
 publish_to: none
-version: 0.9.3+93
+version: 0.9.4+95
 environment:
   sdk: '>=3.9.0 <4.0.0'
 dependencies:
   flutter:
     sdk: flutter
-  supabase_flutter: ^2.18.3
   http: ^1.6.0
   shared_preferences: ^2.5.6
   material_ui: ^1.11.0
@@ -15,6 +14,7 @@ dependencies:
   flutter_markdown_plus: ^1.0.12
   url_launcher: ^6.3.3
   path_provider: ^2.1.6
+  share_plus: ^13.3.1
 dev_dependencies:
   flutter_test:
     sdk: flutter

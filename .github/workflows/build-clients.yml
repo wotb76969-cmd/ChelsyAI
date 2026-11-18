@@ -1,7 +1,7 @@
-name: Chelsy AI 0.9.3 — tests and installers
+name: Chelsy AI 0.9.4 — tests and installers
 # Reproducible build of:
-#   ChelsyAI_Host_Setup_0.9.3.exe, ChelsyAI_Client_Setup_0.9.3.exe (windows-latest)
-#   ChelsyAI_Android_0.9.3.apk (ubuntu-latest, Flutter 3.50.0)
+#   ChelsyAI_Host_Setup_0.9.4.exe, ChelsyAI_Client_Setup_0.9.4.exe (windows-latest)
+#   ChelsyAI_Android_0.9.4.apk (ubuntu-latest, Flutter 3.50.0)
 # Builds run only after all tests pass. Optional repository secrets:
 #   WINDOWS_SIGN_PFX_BASE64, WINDOWS_SIGN_PASSWORD           -> Authenticode signing of EXE/installers
 #   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
@@ -9,7 +9,7 @@ name: Chelsy AI 0.9.3 — tests and installers
 on:
   workflow_dispatch:
   push:
-    branches: ['main', 'claude/**']
+    branches: ['main', 'claude/**', 'codex/chelsy-094-build']
     tags: ['v*']
   pull_request:
 permissions:
@@ -93,10 +93,10 @@ jobs:
         run: Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $env:RUNNER_TEMP 'sign.pfx')
       - uses: actions/upload-artifact@v4
         with:
-          name: ChelsyAI-0.9.3-Windows
+          name: ChelsyAI-0.9.4-Windows
           path: |
-            ChelsyAI_0.9_Windows/installer/ChelsyAI_Host_Setup_0.9.3.exe
-            ChelsyAI_0.9_Windows/installer/ChelsyAI_Client_Setup_0.9.3.exe
+            ChelsyAI_0.9_Windows/installer/ChelsyAI_Host_Setup_0.9.4.exe
+            ChelsyAI_0.9_Windows/installer/ChelsyAI_Client_Setup_0.9.4.exe
             ChelsyAI_0.9_Windows/installer/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
@@ -137,46 +137,38 @@ jobs:
             { echo "CHELSY_KEYSTORE_PATH=$KS_PATH"; echo "CHELSY_KEYSTORE_PASSWORD=$KS_PASS";
               echo "CHELSY_KEY_ALIAS=$KEY_ALIAS"; echo "CHELSY_KEY_PASSWORD=$KEY_PASS"; } >> "$GITHUB_ENV"
           else
-            echo "::warning::ANDROID_KEYSTORE_BASE64 not set: signing with a one-time key. Future APKs will not install as updates over this one."
-            PASS=$(openssl rand -hex 24)
-            keytool -genkeypair -v -keystore "$KS_PATH" -alias chelsy -keyalg RSA -keysize 4096 -validity 10000 \
-              -storepass "$PASS" -keypass "$PASS" -dname "CN=Chelsy AI test build, O=Chelsy Group" >/dev/null
-            echo "::add-mask::$PASS"
-            { echo "CHELSY_KEYSTORE_PATH=$KS_PATH"; echo "CHELSY_KEYSTORE_PASSWORD=$PASS";
-              echo "CHELSY_KEY_ALIAS=chelsy"; echo "CHELSY_KEY_PASSWORD=$PASS"; } >> "$GITHUB_ENV"
+            echo "::error::Stable Android release signing material is not configured."
+            exit 1
           fi
-      - name: Build release APK (public Supabase URL + publishable key only)
+      - name: Build signed native client
         working-directory: Android_Client
         run: |
-          URL=$(python3 -c "import json;print(json.load(open('../ChelsyAI_0.9_Windows/site_supabase_public.json'))['url'])")
-          KEY=$(python3 -c "import json;print(json.load(open('../ChelsyAI_0.9_Windows/site_supabase_public.json'))['publishable_key'])")
-          case "$KEY" in sb_secret_*) echo "Refusing to embed a secret key"; exit 1;; esac
-          flutter build apk --release --obfuscate --split-debug-info=build/symbols \
-            --dart-define=SUPABASE_URL="$URL" --dart-define=SUPABASE_KEY="$KEY"
+          flutter build apk --release --obfuscate --split-debug-info=build/symbols
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/ChelsyAI_Android_0.9.3.apk
+          cp build/app/outputs/flutter-apk/app-release.apk dist/ChelsyAI_Android_0.9.4.apk
       - name: Verify APK signature and manifest
         working-directory: Android_Client
         run: |
           APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
           AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt | sort -V | tail -1)
-          "$APKSIGNER" verify --verbose --print-certs dist/ChelsyAI_Android_0.9.3.apk
-          "$AAPT" dump permissions dist/ChelsyAI_Android_0.9.3.apk
-          "$AAPT" dump xmltree dist/ChelsyAI_Android_0.9.3.apk AndroidManifest.xml > manifest.txt
+          "$APKSIGNER" verify --verbose --print-certs dist/ChelsyAI_Android_0.9.4.apk
+          "$AAPT" dump permissions dist/ChelsyAI_Android_0.9.4.apk
+          "$AAPT" dump xmltree dist/ChelsyAI_Android_0.9.4.apk AndroidManifest.xml > manifest.txt
           cat manifest.txt | grep -E "allowBackup|usesCleartextTraffic|debuggable|networkSecurityConfig" || true
           grep -q 'android:allowBackup(.*)=(type 0x12)0x0' manifest.txt
           grep -q 'android:usesCleartextTraffic(.*)=(type 0x12)0x0' manifest.txt
           if grep -q 'android:debuggable(.*)=(type 0x12)0xffffffff' manifest.txt; then echo "APK is debuggable"; exit 1; fi
-          (cd dist && sha256sum ChelsyAI_Android_0.9.3.apk > SHA256SUMS.txt)
+          (cd dist && sha256sum ChelsyAI_Android_0.9.4.apk > SHA256SUMS.txt)
           rm -f "$RUNNER_TEMP/chelsy-release.jks"
       - uses: actions/upload-artifact@v4
         with:
-          name: ChelsyAI-0.9.3-Android
+          name: ChelsyAI-0.9.4-Android
           path: Android_Client/dist/
           if-no-files-found: error
           retention-days: 30
       - uses: actions/upload-artifact@v4
         with:
-          name: ChelsyAI-0.9.3-Android-symbols
+          name: ChelsyAI-0.9.4-Android-symbols
           path: Android_Client/build/symbols/
           retention-days: 30
+

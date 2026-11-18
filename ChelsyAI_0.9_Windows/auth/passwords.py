@@ -76,6 +76,10 @@ def verify_password(password_hash: str, password: str) -> bool:
         return False
     with _VERIFY_SEM:
         try:
+            if password_hash.startswith(('$2a$','$2b$','$2y$')):
+                import bcrypt
+                raw=password.encode('utf-8')
+                return len(raw)<=72 and bcrypt.checkpw(raw,password_hash.encode('ascii'))
             return _HASHER.verify(password_hash, password)
         except (VerifyMismatchError, InvalidHashError, TypeError, ValueError):
             return False

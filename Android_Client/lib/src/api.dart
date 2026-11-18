@@ -47,7 +47,8 @@ class HostApi {
   Future<Map<String, dynamic>> _call(String method, String path, [Map<String, dynamic>? body]) async {
     final headers = {'Authorization': 'Bearer ${await _token()}', 'Accept': 'application/json'};
     if (body != null) headers['Content-Type'] = 'application/json';
-    final request = http.Request(method, Uri.parse('$base$path'))..headers.addAll(headers);
+    final request = http.Request(method, Uri.parse('$base$path'))..followRedirects=false
+      ..headers.addAll(headers);
     if (body != null) request.body = jsonEncode(body);
     http.StreamedResponse response;
     try {
@@ -139,6 +140,7 @@ class HostApi {
     if (regenerate) body['regenerate'] = true;
     if (editMessageId != null) body['edit_message_id'] = editMessageId;
     final request = http.Request('POST', Uri.parse('$base/api/v2/chat'))
+      ..followRedirects=false
       ..headers.addAll({
         'Authorization': 'Bearer ${await _token()}',
         'Accept': 'application/x-ndjson',

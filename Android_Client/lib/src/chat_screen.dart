@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
+import 'documents_screen.dart';
 import 'aurora.dart';
 import 'local_store.dart';
 import 'logic.dart';
@@ -749,6 +750,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 ? Icons.star_rounded
                 : Icons.star_border_rounded),
           ),
+          IconButton(tooltip:'Chelsy Mind и документы',icon:const Icon(Icons.description_outlined),
+            onPressed:()=>Navigator.of(context).push(MaterialPageRoute<void>(builder:(_)=>DocumentsScreen(auth:widget.auth)))),
           PopupMenuButton<String>(
             onSelected: (v) => switch (v) {
               'rename' => _rename(),

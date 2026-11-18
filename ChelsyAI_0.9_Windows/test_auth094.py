@@ -15,7 +15,7 @@ import core
 import migrations
 from auth import (
     AuthError, authenticate_user, create_user, create_session, resolve_access_token,
-    refresh_session, revoke_session, change_password, ensure_bootstrap_admins,
+    refresh_session, revoke_session, change_password,
     list_users_admin, set_user_status, validate_password_policy, PasswordError,
 )
 from auth.rate_limit import reset_for_tests
@@ -103,7 +103,21 @@ class Mind094Test(unittest.TestCase):
         self.conn = sqlite3.connect(self.db_path, timeout=15)
         self.user = create_user(self.conn, 'm@example.com', 'correct-horse-battery')
         self.conn.commit()
-        self.engine = MindEngine(self.conn, Path(self.tmp.name) / 'artifacts')
+        from unittest.mock import patch
+        from auth import vault
+        self.engine = MindEngine(self.conn, Path(self.tmp.name) / 'artifacts',key=vault.unlock(self.conn,self.user['id'],'correct-horse-battery'))
+        direct=patch('mind.engine.render',side_effect=build_artifact)
+        direct.start()
+        self.addCleanup(direct.stop)
+
+    def sample(self,prompt,plan):
+        fmt=plan.params['format']
+        if fmt=='xlsx':
+            return json.dumps({'title':'Смета','tables':[{'headers':['Расход','Цена'],'rows':[['Бумага',12]],'add_total':True}]})
+        if fmt=='pptx':
+            return json.dumps({'title':'Проект','slides':[{'title':f'Этап {i}','bullets':['Собрать команду'],'notes':'Согласовать дату'} for i in range(plan.params['slides'])]})
+        return 'План проекта\nОбсудите задачи с командой и запишите сроки.'
+
 
     def tearDown(self):
         try:
@@ -125,17 +139,35 @@ class Mind094Test(unittest.TestCase):
             'xlsx': 'Подготовь XLSX-бюджет с итогами',
         }
         for fmt, prompt in prompts.items():
-            result = self.engine.handle(self.user['id'], prompt)
+            result = self.engine.handle(self.user['id'], prompt,generate_text=self.sample)
             self.assertEqual(result.route, fmt, result)
             self.assertTrue(result.artifact_id)
             art = self.engine.get_artifact(self.user['id'], result.artifact_id)
             self.assertTrue(Path(art['storage_path']).is_file())
-            validate_artifact(fmt, Path(art['storage_path']))
+            decoded=Path(self.tmp.name)/('download.'+fmt)
+            decoded.write_bytes(self.engine.read(art))
+            validate_artifact(fmt,decoded)
+
+    def test_pdf_local_zoom_and_opening_action(self):
+        from pypdf import PdfWriter
+        from pypdf.generic import DictionaryObject, NameObject
+
+        spec = ArtifactSpec('pdf', 'Проверка', 'ru', [
+            {'heading': 'Отчёт', 'paragraphs': ['Контрольная строка.']},
+        ])
+        built = build_artifact(spec, Path(self.tmp.name))
+        validate_artifact('pdf', built.path)
+        modified = Path(self.tmp.name) / 'opening-action.pdf'
+        writer = PdfWriter(clone_from=built.path)
+        writer.root_object[NameObject('/OpenAction')] = DictionaryObject()
+        writer.write(modified)
+        with self.assertRaises(ValueError):
+            validate_artifact('pdf', modified)
 
     def test_idor_blocked(self):
         other = create_user(self.conn, 'other@example.com', 'correct-horse-battery')
         self.conn.commit()
-        result = self.engine.handle(self.user['id'], 'Создай txt заметку')
+        result = self.engine.handle(self.user['id'], 'Создай txt заметку',generate_text=self.sample)
         with self.assertRaises(PermissionError):
             self.engine.get_artifact(other['id'], result.artifact_id)
 
@@ -158,7 +190,7 @@ class Migration094Test(unittest.TestCase):
             self.assertIn(5, applied)
             self.assertIn(6, applied)
             info = migrations.inspect(path)
-            self.assertEqual(info['version'], 6)
+            self.assertEqual(info['version'], migrations.SCHEMA_VERSION)
             self.assertIn('auth_users', info['tables'])
             self.assertIn('mind_artifacts', info['tables'])
 

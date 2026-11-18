@@ -498,6 +498,7 @@ class ChelsyClientApp:
         ttk.Checkbutton(opts, text='Поиск в интернете', variable=self.web_var,
                         command=lambda: self._remember(web=self.web_var.get())).pack(side='left', padx=12)
         ttk.Button(opts, text='Прикрепить файл', style='Flat.TButton', command=self.attach).pack(side='left')
+        ttk.Button(opts,text='Chelsy Mind · файлы',style='Flat.TButton',command=self.mind_window).pack(side='left')
         self.attachments = []
         self.attach_label = ttk.Label(opts, text='', style='Muted.TLabel')
         self.attach_label.pack(side='left', padx=8)
@@ -894,6 +895,70 @@ class ChelsyClientApp:
         if self.client:
             self._set_status('syncing', 'Синхронизация…')
             self._api(self.client.sync, then='synced')
+
+    def mind_window(self):
+        win=Toplevel(self.root)
+        win.title('Chelsy Mind · документы')
+        prompt=Text(win,height=4,width=70)
+        prompt.pack(fill='x',padx=12,pady=8)
+        status=StringVar(value='Опишите задачу и нужный формат.')
+        ttk.Label(win,textvariable=status,wraplength=480).pack(fill='x',padx=12)
+        listing=Listbox(win)
+        listing.pack(fill='both',expand=True,padx=12,pady=8)
+        entries=[]
+        pending={}
+        client=self.client
+        def run(fn,done):
+            events=queue.Queue()
+            def work():
+                try: events.put((True,fn()))
+                except Exception as exc: events.put((False,str(exc)))
+            def poll():
+                if not win.winfo_exists(): return
+                try: ok,value=events.get_nowait()
+                except queue.Empty:
+                    win.after(100,poll)
+                    return
+                if ok: done(value)
+                else: status.set(value)
+            threading.Thread(target=work,daemon=True).start()
+            win.after(100,poll)
+        def listed(result):
+            entries[:]=result['artifacts']
+            listing.delete(0,END)
+            for art in entries: listing.insert(END,art['filename'])
+        def refresh(): run(lambda:client.call('GET','/api/v3/artifacts'),listed)
+        def submit():
+            text=prompt.get('1.0',END).strip()
+            if not text: return
+            token=pending.setdefault(text,str(uuid.uuid4()))
+            status.set('Host обрабатывает задачу…')
+            def done(result):
+                pending.pop(text,None)
+                status.set(result['answer'] or result['meta']['status'])
+                refresh()
+            run(lambda:client.call('POST','/api/v3/mind/run',{'message':text,'idempotency_key':token}),done)
+        def save():
+            if not listing.curselection(): return
+            art=entries[listing.curselection()[0]]
+            dest=filedialog.asksaveasfilename(parent=win,initialfile=art['filename'])
+            if not dest: return
+            def write():
+                import hashlib,tempfile
+                with client._open('GET','/api/v3/artifacts/'+art['id']+'/download') as response:
+                    raw=response.read(25*1024*1024+1)
+                if hashlib.sha256(raw).hexdigest()!=art['sha256']: raise ValueError('Ошибка проверки файла.')
+                with tempfile.NamedTemporaryFile(dir=Path(dest).parent,delete=False) as tmp:
+                    try:
+                        tmp.write(raw)
+                        tmp.close()
+                        os.replace(tmp.name,dest)
+                    finally: Path(tmp.name).unlink(missing_ok=True)
+                return 'Файл сохранён.'
+            run(write,status.set)
+        for label,fn in [('Отправить',submit),('Обновить список',refresh),('Скачать выбранный файл',save)]:
+            ttk.Button(win,text=label,command=fn).pack(side='left',padx=6,pady=6)
+        refresh()
 
     def logout(self):
         try:

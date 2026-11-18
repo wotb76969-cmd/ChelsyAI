@@ -47,6 +47,8 @@ def analyze(text: str) -> Intent:
         if pat.search(text):
             fmt = name
             break
+    explicit=re.search(r'\b(txt|docx|pdf|pptx|xlsx)\b',text,re.I)
+    if explicit:fmt=explicit.group(1).lower()
     result_type = 'chat'
     if fmt:
         result_type = 'document'
@@ -54,10 +56,13 @@ def analyze(text: str) -> Intent:
         result_type = 'research'
     slides = None
     pages = None
-    m = SLIDES_NUM.search(text)
+    numbers={'один':'1','одну':'1','две':'2','два':'2','три':'3','четыре':'4','пять':'5','восемь':'8',
+             'one':'1','two':'2','three':'3','four':'4','five':'5','eight':'8'}
+    counted=re.sub(r'\b('+'|'.join(numbers)+r')\b',lambda m:numbers[m[0].lower()],text,flags=re.I)
+    m = SLIDES_NUM.search(counted)
     if m:
         slides = max(1, min(40, int(m.group(1))))
-    m = PAGES_NUM.search(text)
+    m = PAGES_NUM.search(counted)
     if m:
         pages = max(1, min(50, int(m.group(1))))
     missing = []

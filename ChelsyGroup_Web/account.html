@@ -54,7 +54,7 @@
           <h1>Обзор</h1>
           <p class="hero-lead">Состояние Host, квоты и ваши задачи. Недоступность Host не означает удаление истории.</p>
           <div id="cabinet-overview" class="form-card"></div>
-          <div class="account-details" style="margin-top:1rem">
+          <div class="account-details" >
             <div><span>Имя</span><strong id="account-name">—</strong></div>
             <div><span>Email</span><strong id="account-email">—</strong></div>
             <div><span>Тариф анкеты</span><strong id="account-plan">—</strong></div>
@@ -63,31 +63,32 @@
         </div>
         <div class="cabinet-panel" id="panel-profile" hidden>
           <h2>Профиль</h2>
-          <form id="profile-form" class="form-card">
+          <form method="post" id="profile-form" class="form-card">
             <label>Отображаемое имя <input name="display_name" maxlength="80" autocomplete="nickname"></label>
             <label>Язык
               <select name="locale"><option value="ru">Русский</option><option value="en">English</option></select>
             </label>
             <label>Часовой пояс <input name="timezone" maxlength="64" placeholder="UTC"></label>
-            <p class="form-microcopy">Аватар: только PNG/JPEG/WebP без EXIF, без SVG. Загрузка через Host API.</p>
+            
             <button type="submit" class="btn btn-primary">Сохранить</button>
             <p class="auth-message" id="profile-status" role="status"></p>
           </form>
+          <form method="post" id="avatar-form" class="form-card"><img id="avatar" hidden alt="Ваш аватар" width="80" height="80"><label>Аватар до 1 МБ <input type="file" name="photo" accept="image/png,image/jpeg,image/webp" required></label><button type="submit" class="btn btn-secondary">Загрузить</button></form>
         </div>
         <div class="cabinet-panel" id="panel-security" hidden>
           <h2>Вход и безопасность</h2>
-          <form id="password-form" class="form-card">
+          <form method="post" id="password-form" class="form-card">
             <h3>Смена пароля</h3>
             <label>Текущий пароль <input type="password" name="current_password" autocomplete="current-password" required minlength="15"></label>
             <label>Новый пароль (≥15) <input type="password" name="new_password" autocomplete="new-password" required minlength="15" maxlength="128"></label>
             <button type="submit" class="btn btn-primary">Сменить пароль</button>
             <p class="auth-message" id="password-status" role="status"></p>
           </form>
-          <form id="email-form" class="form-card">
+          <form method="post" id="email-form" class="form-card">
             <h3>Смена email</h3>
             <label>Пароль <input type="password" name="password" autocomplete="current-password" required></label>
             <label>Новый email <input type="email" name="new_email" autocomplete="email" required></label>
-            <button type="submit" class="btn btn-secondary">Сменить email</button>
+            <label>Код подтверждения из письма <input name="code" autocomplete="one-time-code"></label><button type="submit" class="btn btn-secondary">Подтвердить адрес</button>
             <p class="auth-message" id="email-status" role="status"></p>
           </form>
           <div class="form-card">
@@ -98,24 +99,24 @@
         </div>
         <div class="cabinet-panel" id="panel-memory" hidden>
           <h2>Мои диалоги и память</h2>
-          <p>Поиск, избранное, экспорт и удаление выполняются через клиенты Chelsy и Host API. Здесь — переключатель памяти.</p>
+          <p>Сохранённые факты доступны вашему аккаунту. Выберите, можно ли учитывать их в новых ответах.</p>
           <label class="form-card"><input type="checkbox" id="memory-enabled"> Использовать личную память в ответах</label>
-          <p><a class="btn btn-secondary" href="history.html">История (если доступна)</a></p>
+          <div id="facts-list" class="form-card"></div><form method="post" id="fact-form" class="form-card"><label>Личный факт <input name="text" maxlength="2000" required></label><button type="submit">Запомнить</button></form><p><a class="btn btn-secondary" href="history.html">История (если доступна)</a></p>
         </div>
         <div class="cabinet-panel" id="panel-files" hidden>
           <h2>Мои файлы</h2>
-          <div id="files-list" class="form-card">Загрузка…</div>
+          <pre id="preview" aria-live="polite"></pre><div id="files-list" class="form-card">Загрузка…</div>
         </div>
         <div class="cabinet-panel" id="panel-tasks" hidden>
           <h2>Мои задачи</h2>
-          <p class="form-microcopy">Очередь и прогресс генерации документов отображаются после запуска задач в клиенте / Mind API.</p>
+          <form method="post" id="mind-form" class="form-card"><label>Сообщение или описание документа<textarea name="message" maxlength="8000" required></textarea></label><button class="btn btn-primary" type="submit">Отправить</button></form><p id="mind-answer" aria-live="polite"></p><button type="button" id="refresh-tasks">Обновить задачи</button>
           <div id="tasks-list" class="form-card">Нет данных очереди в этой сессии.</div>
         </div>
         <div class="cabinet-panel" id="panel-privacy" hidden>
-          <h2>Данные и приватность</h2>
+          <h2>Данные и приватность</h2><button id="export" type="button">Скачать данные кабинета (JSON)</button><form method="post" id="delete-request" class="form-card"><label>Текущий пароль для запроса удаления<input type="password" name="password" autocomplete="current-password" required></label><button type="submit">Запросить удаление аккаунта</button></form>
           <ul class="form-card">
             <li>Частные диалоги не используются для обучения общей модели.</li>
-            <li>Экспорт и удаление аккаунта — через запрос администратору Host по политике хранения (до 72 ч в рабочих хранилищах).</li>
+            <li>Экспорт содержит профиль, новые диалоги, список файлов и задачи. Документы скачиваются отдельно.</li>
             <li>Администраторы не читают ваши чаты, файлы и память.</li>
           </ul>
         </div>
@@ -124,8 +125,8 @@
           <p class="form-microcopy">Показываются только реально поддерживаемые возможности Host 0.9.4.</p>
           <ul class="form-card">
             <li>Тема: тёмная (фирменная)</li>
-            <li>Уведомления: через клиентские приложения</li>
-            <li>Параметры ответа: в Desktop / Windows Client / Android</li>
+            <li>Уведомления о действиях появляются в открытом кабинете</li>
+            <li>Язык и часовой пояс можно изменить в профиле.</li>
           </ul>
         </div>
         <div class="account-actions">

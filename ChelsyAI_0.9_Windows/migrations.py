@@ -27,7 +27,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 MAX_BACKUPS = 30
 
 
@@ -436,7 +436,27 @@ def _m6_down(conn):
         conn.execute(f'DROP TABLE IF EXISTS {table}')
 
 
+def _m7_private(conn):
+    _script(conn, '''
+    CREATE TABLE mail_changes(user_id TEXT PRIMARY KEY,address TEXT NOT NULL,digest TEXT NOT NULL,expires REAL NOT NULL);
+    CREATE TABLE private_facts(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,payload TEXT NOT NULL);
+    CREATE INDEX private_facts_owner ON private_facts(user_id);
+    CREATE TABLE vault_sessions(session_id TEXT PRIMARY KEY, access_box TEXT NOT NULL, refresh_box TEXT NOT NULL);
+    CREATE TABLE used_refresh(digest TEXT PRIMARY KEY, session_id TEXT NOT NULL);
+    CREATE TABLE required_password_change(user_id TEXT PRIMARY KEY);
+    CREATE TABLE private_history(id TEXT PRIMARY KEY, user_id TEXT NOT NULL, created TEXT NOT NULL, payload TEXT NOT NULL, favorite INTEGER NOT NULL DEFAULT 0);
+    CREATE INDEX private_history_owner ON private_history(user_id,created);
+    CREATE TABLE deletion_requests(user_id TEXT PRIMARY KEY, created TEXT NOT NULL);
+    ''')
+
+
+def _m7_down(conn):
+    for name in ('mail_changes','private_facts','deletion_requests','private_history','required_password_change','used_refresh','vault_sessions'):
+        conn.execute(f'DROP TABLE IF EXISTS {name}')
+
+
 MIGRATIONS = {
+    7: ('Private history, session envelopes and refresh rotation', _m7_private, _m7_down),
     1: ('Baseline schema of Chelsy 0.9.2', _m1_baseline, None),
     2: ('Conversations, stable message ids, feedback, user settings', _m2_conversations, _m2_down),
     3: ('Knowledge Engine and research storage', _m3_knowledge, _m3_down),
@@ -470,7 +490,7 @@ def backup(path, label='manual'):
 
 
 def _has_user_data(conn):
-    for table in ('messages', 'personal_memory', 'pages'):
+    for table in ('messages', 'personal_memory', 'pages', 'auth_users','mind_artifacts'):
         if table in tables(conn) and conn.execute(f'SELECT 1 FROM {table} LIMIT 1').fetchone():
             return True
     return False
@@ -485,6 +505,8 @@ def migrate(path, target=SCHEMA_VERSION, log=None):
     try:
         conn.execute('PRAGMA journal_mode=WAL')
         version = conn.execute('PRAGMA user_version').fetchone()[0]
+        if version>SCHEMA_VERSION:
+            raise ValueError(f'Unknown database schema {version}; no changes made.')
         if version >= target:
             return applied
         for number in range(version + 1, target + 1):
