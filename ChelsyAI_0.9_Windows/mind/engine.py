@@ -1,277 +1,159 @@
-"""Chelsy Mind Engine — wires intent → router → plan → model/artifacts → validate."""
-from __future__ import annotations
-
+"""Durable owner-scoped tasks and encrypted publication of verified documents."""
+import hashlib
 import json
+import os
 import sqlite3
+import tempfile
+import threading
+import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from auth import vault
+from .artifacts.builder import ArtifactSpec
+from .artifacts.render import render
 from .intent import analyze
 from .planner import build_plan
-from .policy import check_tool, assert_owner
-from .quality import validate_text_answer, validate_structure
-from .router import load_default_router, TaskRouter
-from .artifacts.builder import ArtifactSpec, build_artifact
+from .policy import assert_owner, check_tool
+from .quality import validate_text_answer
+from .router import load_default_router
+from .runtime import document_structure, generate, Incomplete
 
+SLOT=threading.Semaphore(1)
 
-def _now() -> str:
+def now():
     return datetime.now(timezone.utc).isoformat()
-
 
 @dataclass
 class MindResult:
-    route: str
-    stages: list[str]
-    answer: str = ''
-    artifact_id: str | None = None
-    task_id: str | None = None
-    meta: dict = field(default_factory=dict)
-
+    route:str
+    stages:list
+    answer:str=''
+    artifact_id:str|None=None
+    task_id:str|None=None
+    meta:dict=field(default_factory=dict)
 
 class MindEngine:
-    def __init__(self, conn: sqlite3.Connection, artifacts_root: Path, router: TaskRouter | None = None):
-        self.conn = conn
-        self.artifacts_root = Path(artifacts_root)
-        self.artifacts_root.mkdir(parents=True, exist_ok=True)
-        self.router = router or load_default_router()
+    def __init__(self,conn,artifacts_root,router=None,*,key=None):
+        self.conn=conn
+        self.root=Path(artifacts_root)
+        self.router=router or load_default_router()
+        self.key=key
 
-    def _log_route(self, user_id: str, intent_type: str, route: str, confidence: float) -> None:
-        self.conn.execute(
-            'INSERT INTO mind_router_log(created, user_id, intent, route, confidence, model, accepted) '
-            'VALUES (?,?,?,?,?,?,1)',
-            (_now(), user_id, intent_type, route, confidence, 'task-router-v1'),
-        )
+    def cancel_task(self,uid,task):
+        cur=self.conn.execute("UPDATE mind_tasks SET cancel_requested=1,updated=? WHERE id=? AND user_id=? AND status IN ('queued','running')",(now(),task,uid))
+        self.conn.commit()
+        return bool(cur.rowcount)
 
-    def create_task(self, user_id: str, kind: str, params: dict, *,
-                    idempotency_key: str = '') -> str:
+    def check_cancel(self,uid,task):
+        row=self.conn.execute('SELECT cancel_requested FROM mind_tasks WHERE id=? AND user_id=?',(task,uid)).fetchone()
+        if not row or row[0]: raise InterruptedError('Задача отменена.')
+
+    def handle(self,user_id,text,*,idempotency_key='',generate_text=generate):
+        if self.key is None: raise PermissionError('Для доступа к данным войдите снова.')
+        intent=analyze(text)
+        decision=self.router.route(text)
+        if intent.format: decision.route=intent.format
+        route=decision.route
+        plan=build_plan(intent,decision)
+        policy=check_tool({'chat':'chat_generate','research':'research_search'}.get(route,'artifact_build_'+route),params=plan.params)
+        if not policy.allowed: raise ValueError(policy.reason)
+        if len(idempotency_key)>128: raise ValueError('Слишком длинный ключ повтора.')
+        self.conn.execute('BEGIN IMMEDIATE')
         if idempotency_key:
-            row = self.conn.execute(
-                'SELECT id, status FROM mind_tasks WHERE user_id=? AND idempotency_key=?',
-                (user_id, idempotency_key),
-            ).fetchone()
-            if row:
-                return row[0]
-        pending = self.conn.execute(
-            "SELECT COUNT(*) FROM mind_tasks WHERE user_id=? AND status IN ('queued','running')",
-            (user_id,),
-        ).fetchone()[0]
-        if pending >= 2:
-            raise RuntimeError('Слишком много незавершённых задач')
-        queued = self.conn.execute(
-            "SELECT COUNT(*) FROM mind_tasks WHERE status IN ('queued','running')"
-        ).fetchone()[0]
-        if queued >= 20:
-            raise RuntimeError('Очередь переполнена')
-        task_id = str(uuid.uuid4())
-        self.conn.execute(
-            '''INSERT INTO mind_tasks(id, user_id, kind, status, created, updated, params_json, idempotency_key)
-               VALUES (?,?,?,?,?,?,?,?)''',
-            (task_id, user_id, kind, 'queued', _now(), _now(),
-             json.dumps(params, ensure_ascii=False), idempotency_key or ''),
-        )
-        return task_id
-
-    def cancel_task(self, user_id: str, task_id: str) -> None:
-        row = self.conn.execute(
-            'SELECT user_id, status FROM mind_tasks WHERE id=?', (task_id,)
-        ).fetchone()
-        if not row:
-            raise LookupError('Задача не найдена')
-        assert_owner(row[0], user_id)
-        self.conn.execute(
-            'UPDATE mind_tasks SET cancel_requested=1, updated=? WHERE id=?',
-            (_now(), task_id),
-        )
-        if row[1] in ('queued',):
-            self.conn.execute(
-                "UPDATE mind_tasks SET status='cancelled', updated=? WHERE id=?",
-                (_now(), task_id),
-            )
-
-    def handle(self, user_id: str, text: str, *, idempotency_key: str = '',
-               generate_text=None) -> MindResult:
-        intent = analyze(text)
-        decision = self.router.route(text)
-        plan = build_plan(intent, decision)
-        self._log_route(user_id, intent.result_type, decision.route, decision.confidence)
-
-        if decision.route == 'chat' or (decision.route == 'research' and not intent.format):
-            tool = check_tool('chat_generate' if decision.route == 'chat' else 'research_search')
-            if not tool.allowed:
-                raise PermissionError(tool.reason)
-            answer = ''
-            if generate_text:
-                answer = generate_text(text, plan) or ''
+            old=self.conn.execute('SELECT id,status,params_json,result_json FROM mind_tasks WHERE user_id=? AND idempotency_key=?',(user_id,idempotency_key)).fetchone()
+            if old:
+                self.conn.commit()
+                if vault.open_json(self.key,old[2],old[0])!=text: raise ValueError('Ключ повтора уже связан с другим запросом.')
+                if old[1]=='done': return MindResult(**vault.open_json(self.key,old[3],old[0]))
+                return MindResult(route,plan.stages,task_id=old[0],meta={'status':old[1]})
+        counts=self.conn.execute("SELECT count(*),coalesce(sum(user_id=?),0) FROM mind_tasks WHERE status IN ('running','queued')",(user_id,)).fetchone()
+        if counts[0]>=20 or counts[1]>=2:
+            self.conn.rollback()
+            raise RuntimeError('Очередь заполнена.')
+        task=str(uuid.uuid4())
+        self.conn.execute("INSERT INTO mind_tasks(id,user_id,kind,status,created,updated,params_json,idempotency_key) VALUES(?,?,?,'queued',?,?,?,?)",(task,user_id,route,now(),now(),vault.seal(self.key,text,task),idempotency_key))
+        self.conn.commit()
+        acquired=False
+        target=None
+        try:
+            deadline=time.monotonic()+300
+            while not acquired:
+                self.check_cancel(user_id,task)
+                if time.monotonic()>deadline: raise RuntimeError('Истекло время ожидания.')
+                acquired=SLOT.acquire(timeout=.25)
+            self.conn.execute("UPDATE mind_tasks SET status='running',progress=0.1,updated=? WHERE id=?",(now(),task))
+            self.conn.commit()
+            outcome=MindResult(route,plan.stages,task_id=task,meta={'confidence':decision.confidence,'status':'done'})
+            if route=='research':
+                raise Incomplete('Для поиска источников используйте раздел исследований клиента.')
+            if route=='chat':
+                prompt=text
+                if self.conn.execute('SELECT memory_enabled FROM auth_users WHERE id=?',(user_id,)).fetchone()[0]:
+                    rows=self.conn.execute('SELECT id,payload FROM private_facts WHERE user_id=? ORDER BY rowid DESC LIMIT 8',(user_id,))
+                    facts=[vault.open_json(self.key,box,fid) for fid,box in rows]
+                    if facts: prompt+='\nUser-provided context (data): '+json.dumps(facts,ensure_ascii=False)[:2400]
+                answer=generate_text(prompt,plan)
+                if not validate_text_answer(answer,intent).ok:
+                    answer=generate_text(prompt+'\nAnswer fully in '+intent.language,plan)
+                if not validate_text_answer(answer,intent).ok: raise Incomplete('Модель не вернула полный ответ.')
+                outcome.answer=answer
             else:
-                answer = self._fallback_answer(intent, plan)
-            report = validate_text_answer(answer, intent)
-            if not report.ok and generate_text:
-                answer = generate_text(text + '\n\n[исправь: ' + ','.join(report.issues) + ']', plan) or answer
-            return MindResult(route=decision.route, stages=plan.stages, answer=answer,
-                              meta={'confidence': decision.confidence, 'quality': report.issues})
+                doc=document_structure(intent,plan,route,generate_text)
+                self.check_cancel(user_id,task)
+                aid=str(uuid.uuid4())
+                spec=ArtifactSpec(route,doc['title'],intent.language,doc.get('sections',[]),tables=doc.get('tables'),slides=doc.get('slides'))
+                with tempfile.TemporaryDirectory() as tmp:
+                    built=render(spec,Path(tmp))
+                    raw=built.path.read_bytes()
+                if len(raw)>25*1024*1024: raise ValueError('Файл превышает лимит.')
+                folder=self.root/user_id
+                folder.mkdir(parents=True,exist_ok=True)
+                target=folder/(aid+'.enc')
+                nonce=os.urandom(12)
+                target.write_bytes(nonce+AESGCM(self.key).encrypt(nonce,raw,aid.encode()))
+                metadata=vault.seal(self.key,{'title':spec.title,'filename':built.filename,'preview':doc},aid)
+                self.conn.execute('BEGIN IMMEDIATE')
+                usage,limit=self.conn.execute('SELECT coalesce(sum(a.size_bytes),0),u.quota_mb_limit FROM auth_users u LEFT JOIN mind_artifacts a ON a.user_id=u.id WHERE u.id=? GROUP BY u.id',(user_id,)).fetchone()
+                if usage+len(raw)>limit*1024*1024: raise ValueError('Исчерпана квота файлов.')
+                self.conn.execute("INSERT INTO mind_artifacts(id,user_id,task_id,format,mime,filename,size_bytes,sha256,status,created,updated,storage_path,meta_json) VALUES(?,?,?,?,?,'',?,?,'ready',?,?,?,?)",(aid,user_id,task,route,built.mime,len(raw),built.sha256,now(),now(),str(Path(user_id)/target.name),metadata))
+                outcome.artifact_id=aid
+                outcome.answer=('Файл готов: ' if intent.language=='ru' else 'File ready: ')+built.filename
+                outcome.meta.update(filename=built.filename,sha256=built.sha256)
+            if not self.conn.in_transaction: self.conn.execute('BEGIN IMMEDIATE')
+            self.check_cancel(user_id,task)
+            self.conn.execute('INSERT INTO private_history(id,user_id,created,payload) VALUES(?,?,?,?)',(task,user_id,now(),vault.seal(self.key,{'question':text,'answer':outcome.answer,'artifact_id':outcome.artifact_id},task)))
+            self.conn.execute("UPDATE mind_tasks SET status='done',progress=1,updated=?,result_json=? WHERE id=?",(now(),vault.seal(self.key,asdict(outcome),task),task))
+            self.conn.commit()
+            return outcome
+        except Exception as exc:
+            self.conn.rollback()
+            if target: target.unlink(missing_ok=True)
+            status='cancelled' if isinstance(exc,InterruptedError) else 'failed'
+            self.conn.execute('UPDATE mind_tasks SET status=?,error=?,updated=? WHERE id=?',(status,type(exc).__name__,now(),task))
+            self.conn.commit()
+            raise
+        finally:
+            if acquired: SLOT.release()
 
-        # Document routes
-        fmt = decision.route if decision.route in ('docx', 'pptx', 'xlsx', 'pdf', 'txt') else (intent.format or 'docx')
-        tool = check_tool(f'artifact_build_{fmt}', params=plan.params)
-        if not tool.allowed:
-            raise PermissionError(tool.reason)
-        task_id = self.create_task(user_id, f'artifact:{fmt}', plan.params, idempotency_key=idempotency_key)
-        self.conn.execute(
-            "UPDATE mind_tasks SET status='running', progress=0.1, updated=? WHERE id=?",
-            (_now(), task_id),
-        )
-        # Check cancel
-        if self.conn.execute('SELECT cancel_requested FROM mind_tasks WHERE id=?', (task_id,)).fetchone()[0]:
-            self.conn.execute(
-                "UPDATE mind_tasks SET status='cancelled', updated=? WHERE id=?", (_now(), task_id)
-            )
-            return MindResult(route=fmt, stages=plan.stages, task_id=task_id, answer='Задача отменена')
+    def get_artifact(self,user_id,aid):
+        row=self.conn.execute('SELECT user_id,format,mime,size_bytes,sha256,status,created,storage_path,meta_json,version,task_id FROM mind_artifacts WHERE id=?',(aid,)).fetchone()
+        if not row: raise LookupError()
+        assert_owner(row[0],user_id)
+        fmt,mime,size,sha,status,created,path,meta,version,task=row[1:]
+        if not path.endswith('.enc'): raise LookupError('Требуется перенос старого файла.')
+        private=vault.open_json(self.key,meta,aid)
+        return dict(id=aid,format=fmt,mime=mime,size_bytes=size,sha256=sha,status=status,created=created,storage_path=str(self.root/user_id/(aid+'.enc')),version=version,task_id=task,**private)
 
-        structure = self._structure_from_intent(intent, fmt, plan)
-        q = validate_structure(structure, fmt)
-        if not q.ok:
-            self.conn.execute(
-                "UPDATE mind_tasks SET status='failed', error=?, updated=? WHERE id=?",
-                (','.join(q.issues), _now(), task_id),
-            )
-            raise ValueError('Структура результата невалидна: ' + ','.join(q.issues))
+    def list_artifacts(self,user_id,limit=100):
+        rows=self.conn.execute("SELECT id FROM mind_artifacts WHERE user_id=? AND storage_path LIKE '%.enc' ORDER BY created DESC LIMIT ?",(user_id,limit))
+        return [{k:v for k,v in self.get_artifact(user_id,aid).items() if k not in ('storage_path','preview')} for aid, in rows]
 
-        user_dir = self.artifacts_root / user_id / task_id
-        spec = ArtifactSpec(
-            format=fmt,
-            title=structure['title'],
-            language=intent.language,
-            sections=structure.get('sections') or [],
-            tables=structure.get('tables'),
-            slides=structure.get('slides'),
-            sources=structure.get('sources'),
-        )
-        self.conn.execute(
-            "UPDATE mind_tasks SET progress=0.7, updated=? WHERE id=?", (_now(), task_id)
-        )
-        built = build_artifact(spec, user_dir)
-        artifact_id = str(uuid.uuid4())
-        self.conn.execute(
-            '''INSERT INTO mind_artifacts(
-                id, user_id, task_id, format, mime, title, filename, size_bytes, sha256,
-                version, status, created, updated, storage_path, meta_json
-            ) VALUES (?,?,?,?,?,?,?,?,?,1,'ready',?,?,?,?)''',
-            (artifact_id, user_id, task_id, built.format, built.mime, structure['title'],
-             built.filename, built.size_bytes, built.sha256, _now(), _now(),
-             str(built.path), json.dumps({'route': decision.route}, ensure_ascii=False)),
-        )
-        self.conn.execute(
-            '''UPDATE mind_tasks SET status='done', progress=1, updated=?, result_json=? WHERE id=?''',
-            (_now(), json.dumps({'artifact_id': artifact_id}, ensure_ascii=False), task_id),
-        )
-        msg = {
-            'ru': f'Файл {built.filename} готов ({built.size_bytes} байт, SHA-256 {built.sha256[:12]}…).',
-            'en': f'File {built.filename} is ready ({built.size_bytes} bytes, SHA-256 {built.sha256[:12]}…).',
-        }[intent.language if intent.language in ('ru', 'en') else 'ru']
-        return MindResult(
-            route=fmt, stages=plan.stages, answer=msg,
-            artifact_id=artifact_id, task_id=task_id,
-            meta={'sha256': built.sha256, 'filename': built.filename, 'confidence': decision.confidence},
-        )
-
-    def _fallback_answer(self, intent, plan) -> str:
-        if intent.language == 'ru':
-            return (f'Поняла задачу. Маршрут: {plan.route}. '
-                    f'Этапы: {", ".join(plan.stages)}. '
-                    f'Сформулируйте уточнение или подключите модель Host для полного ответа.')
-        return (f'Understood. Route: {plan.route}. '
-                f'Stages: {", ".join(plan.stages)}. '
-                f'Connect the Host model for a full answer.')
-
-    def _structure_from_intent(self, intent, fmt: str, plan) -> dict:
-        title = intent.goal[:80] or ('Документ' if intent.language == 'ru' else 'Document')
-        # Strip command verbs for a cleaner title
-        for prefix in ('создай ', 'сделай ', 'подготовь ', 'create ', 'make ', 'prepare '):
-            if title.lower().startswith(prefix):
-                title = title[len(prefix):]
-                break
-        title = title[:1].upper() + title[1:] if title else title
-        pages = plan.params.get('pages') or 3
-        slides_n = plan.params.get('slides') or 8
-        sections = []
-        for i in range(max(1, pages if fmt in ('docx', 'pdf', 'txt') else 3)):
-            if intent.language == 'ru':
-                sections.append({
-                    'heading': f'Раздел {i + 1}',
-                    'paragraphs': [
-                        f'Это автоматически собранный черновик по запросу: {intent.goal[:200]}.',
-                        'Проверьте факты и дополните детали перед использованием.',
-                    ],
-                    'bullets': [f'Ключевой пункт {i + 1}.1', f'Ключевой пункт {i + 1}.2'],
-                })
-            else:
-                sections.append({
-                    'heading': f'Section {i + 1}',
-                    'paragraphs': [
-                        f'Draft content for: {intent.goal[:200]}.',
-                        'Review facts before use.',
-                    ],
-                    'bullets': [f'Key point {i + 1}.1', f'Key point {i + 1}.2'],
-                })
-        slides = None
-        tables = None
-        if fmt == 'pptx':
-            slides = []
-            for i in range(slides_n):
-                slides.append({
-                    'title': (f'Слайд {i + 1}' if intent.language == 'ru' else f'Slide {i + 1}') + f': {title[:40]}',
-                    'bullets': [
-                        f'Пункт {i + 1}.A' if intent.language == 'ru' else f'Point {i + 1}.A',
-                        f'Пункт {i + 1}.B' if intent.language == 'ru' else f'Point {i + 1}.B',
-                    ],
-                    'notes': intent.goal[:200],
-                })
-        if fmt == 'xlsx':
-            tables = [{
-                'headers': ['Статья', 'Сумма'] if intent.language == 'ru' else ['Item', 'Amount'],
-                'rows': [
-                    ['Аренда' if intent.language == 'ru' else 'Rent', 1000],
-                    ['Зарплата' if intent.language == 'ru' else 'Payroll', 5000],
-                    ['Прочее' if intent.language == 'ru' else 'Other', 750],
-                ],
-                'add_total': True,
-                'allow_formulas': True,
-            }]
-        return {
-            'title': title[:120],
-            'sections': sections,
-            'slides': slides,
-            'tables': tables,
-            'sources': [],
-        }
-
-    def get_artifact(self, user_id: str, artifact_id: str) -> dict:
-        row = self.conn.execute(
-            '''SELECT id, user_id, format, mime, title, filename, size_bytes, sha256, status, storage_path, created
-               FROM mind_artifacts WHERE id=?''',
-            (artifact_id,),
-        ).fetchone()
-        if not row:
-            raise LookupError('Файл не найден')
-        assert_owner(row[1], user_id)
-        return {
-            'id': row[0], 'format': row[2], 'mime': row[3], 'title': row[4],
-            'filename': row[5], 'size_bytes': row[6], 'sha256': row[7],
-            'status': row[8], 'storage_path': row[9], 'created': row[10],
-        }
-
-    def list_artifacts(self, user_id: str, limit: int = 50) -> list[dict]:
-        rows = self.conn.execute(
-            '''SELECT id, format, mime, title, filename, size_bytes, sha256, status, created, version
-               FROM mind_artifacts WHERE user_id=? ORDER BY created DESC LIMIT ?''',
-            (user_id, int(limit)),
-        ).fetchall()
-        return [
-            {
-                'id': r[0], 'format': r[1], 'mime': r[2], 'title': r[3], 'filename': r[4],
-                'size_bytes': r[5], 'sha256': r[6], 'status': r[7], 'created': r[8], 'version': r[9],
-            }
-            for r in rows
-        ]
+    def read(self,art):
+        data=Path(art['storage_path']).read_bytes()
+        raw=AESGCM(self.key).decrypt(data[:12],data[12:],art['id'].encode())
+        if hashlib.sha256(raw).hexdigest()!=art['sha256']: raise ValueError('Ошибка целостности файла.')
+        return raw

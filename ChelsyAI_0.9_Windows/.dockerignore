@@ -1,0 +1,10 @@
+**
+!mind/
+!mind/artifacts/
+!mind/artifacts/builder.py
+!assets/
+!assets/fonts/
+!assets/fonts/**
+!deploy/
+!deploy/renderer/
+!deploy/renderer/**

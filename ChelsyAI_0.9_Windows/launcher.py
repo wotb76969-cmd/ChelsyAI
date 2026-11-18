@@ -11,9 +11,9 @@ from pathlib import Path
 # Uvicorn's DefaultFormatter calls sys.stderr.isatty(), so redirect both
 # streams to persistent log files *before* importing and launching Gradio.
 LOG_DIR = Path(os.environ.get('LOCALAPPDATA') or Path.home()) / 'ChelsyAI'
-LOG_DIR.mkdir(parents=True, exist_ok=True)
 _RUNTIME_STREAM = None
 if sys.stdout is None or sys.stderr is None:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
     _RUNTIME_STREAM = (LOG_DIR / 'runtime.log').open('a', encoding='utf-8', buffering=1)
     if sys.stdout is None:
         sys.stdout = _RUNTIME_STREAM

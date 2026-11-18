@@ -49,7 +49,7 @@ class SupabaseIntegrationTests(unittest.TestCase):
     def test_host_bearer(self):
         self.setup_conf()
         user='123e4567-e89b-12d3-a456-426614174000'
-        with patch('host_server.verify',return_value=user):
+        with patch.dict(os.environ,{'CHELSY_AUTH_MODE':'supabase'}), patch('host_server.verify',return_value=user):
             self.assertEqual(host_server.authorize('Bearer testtoken123'), 'sb:'+user)
         self.assertIsNone(host_server.authorize('Basic eDp5'))
 

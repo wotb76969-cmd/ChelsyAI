@@ -126,6 +126,9 @@ def chat(model, messages, settings=None, timeout=240):
             data = json.load(resp)
     except Exception as exc:
         raise OllamaError(type(exc).__name__) from exc
+    if data.get('done_reason') == 'length':
+        from mind.runtime import Incomplete
+        raise Incomplete('Модель достигла лимита длины.')
     return strip_thinking((data.get('message') or {}).get('content', ''))
 
 

@@ -11,7 +11,8 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import Request, build_opener, ProxyHandler
+from client_api import NoRedirect
 
 _DEFAULT = 'http://127.0.0.1:8787'
 HOST = os.environ.get('CHELSY_ADMIN_HOST', _DEFAULT).rstrip('/')
@@ -48,7 +49,7 @@ class Api:
         if self.access:
             headers['Authorization'] = 'Bearer ' + self.access
         req = Request(HOST + path, data=data, headers=headers, method=method)
-        with urlopen(req, timeout=20) as resp:
+        with build_opener(ProxyHandler({}),NoRedirect()).open(req, timeout=20) as resp:
             return json.load(resp)
 
     def login(self, email, password):

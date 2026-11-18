@@ -32,7 +32,7 @@ android {
     defaultConfig {
         applicationId = "ai.chelsy.chelsy_ai_client"  // unchanged since 0.9.2
         // flutter_secure_storage (Android Keystore) requires API 23+.
-        minSdk = maxOf(flutter.minSdkVersion, 23)
+        minSdk = maxOf(flutter.minSdkVersion, 29)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

@@ -80,7 +80,7 @@ def host_master_key() -> bytes:
     if path and os.path.isfile(path):
         return hashlib.sha256(Path_read(path)).digest()
     # Ephemeral fallback for tests — production must set CHELSY_HOST_MASTER_KEY
-    return hashlib.sha256(b'chelsy-dev-only-master-key').digest()
+    raise RuntimeError('Настройте локальный ключ Host для этого действия.')
 
 
 def Path_read(path: str) -> bytes:

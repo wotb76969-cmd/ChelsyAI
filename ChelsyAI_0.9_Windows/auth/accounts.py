@@ -99,7 +99,17 @@ def authenticate_user(conn: sqlite3.Connection, email: str, password: str, *,
         rate_limit.register_failure(email_n, source)
         raise AuthError('Неверный email или пароль')
     rate_limit.register_success(email_n)
-    if needs_rehash(pwd_hash):
+    migrated=pwd_hash.startswith(('$2a$','$2b$','$2y$'))
+    if migrated and not key_wrap:
+        wrapped=wrap_user_key(generate_user_key(),password)
+        conn.execute("UPDATE auth_users SET key_wrap_json=? WHERE id=? AND key_wrap_json=''",(json.dumps(wrapped),user_id))
+    try:
+        validate_password_policy(password)
+        strong=True
+    except PasswordError:
+        strong=False
+        conn.execute('INSERT OR IGNORE INTO required_password_change VALUES(?)',(user_id,))
+    if strong and (migrated or needs_rehash(pwd_hash)):
         conn.execute(
             'UPDATE auth_users SET password_hash=?, updated=? WHERE id=?',
             (hash_password(password), _now(), user_id),
@@ -219,31 +229,6 @@ def change_email(conn: sqlite3.Connection, user_id: str, password: str, new_emai
         'UPDATE auth_users SET email=?, email_verified=0, updated=? WHERE id=?',
         (new_email, _now(), user_id),
     )
-
-
-def ensure_bootstrap_admins(conn: sqlite3.Connection) -> list[str]:
-    """Create up to two admin accounts from env CHELSY_ADMIN_EMAILS + CHELSY_ADMIN_PASSWORD.
-
-    Existing users are never auto-promoted from legacy owner accounts (MIG-01).
-    """
-    emails = [e.strip().lower() for e in os.environ.get('CHELSY_ADMIN_EMAILS', '').split(',') if e.strip()]
-    password = os.environ.get('CHELSY_ADMIN_PASSWORD', '')
-    created = []
-    if not emails or not password:
-        return created
-    if len(emails) > MAX_ADMINS:
-        emails = emails[:MAX_ADMINS]
-    for email in emails:
-        row = conn.execute('SELECT id, role FROM auth_users WHERE email=?', (email,)).fetchone()
-        if row:
-            continue
-        try:
-            user = create_user(conn, email, password, display_name='Admin', role='admin',
-                               created_by='bootstrap')
-            created.append(user['id'])
-        except (AuthError, PasswordError):
-            continue
-    return created
 
 
 def update_profile(conn: sqlite3.Connection, user_id: str, **fields) -> dict:

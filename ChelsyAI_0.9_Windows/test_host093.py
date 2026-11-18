@@ -49,7 +49,7 @@ class HostV2Tests(unittest.TestCase):
         cls.saved = core.DATA, core.DB_PATH
         core.DATA = Path(cls.tmp.name)
         core.DB_PATH = core.DATA / 'chelsy.db'
-        cls.patches = [patch('host_server.verify', side_effect=fake_verify),
+        cls.patches = [patch.dict('os.environ',{'CHELSY_AUTH_MODE':'supabase'}), patch('host_server.verify', side_effect=fake_verify),
                        patch('host_server.admin_user_id', return_value=OWNER),
                        patch('host_server.allowed_models', return_value=['test-model', 'other-model']),
                        patch('host_server._background_sync', return_value=None),

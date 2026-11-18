@@ -11,7 +11,6 @@ from .accounts import (
     get_user,
     list_users_admin,
     set_user_status,
-    ensure_bootstrap_admins,
     is_admin,
     change_password,
     change_email,

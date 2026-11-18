@@ -67,10 +67,12 @@ def authorize(header: str | None):
                 session = resolve_access_token(conn, token)
                 if session:
                     user = get_user(conn, session['user_id'])
-                    if user and user['status'] == 'active':
+                    if user and user['status'] == 'active' and not conn.execute('SELECT 1 FROM required_password_change WHERE user_id=?',(user['id'],)).fetchone():
                         return storage_key_for(user['id'])
         except Exception:
             pass
+        if os.environ.get('CHELSY_AUTH_MODE','own') != 'supabase':
+            return None
         # Legacy Supabase path (migration only)
         try:
             return storage_key(verify(token))
@@ -141,7 +143,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         # Never log authorization headers, message contents or credentials.
-        print('[Chelsy Host]', self.address_string(), fmt % args, flush=True)
+        pass  # Request targets can contain private search terms.
 
     # ---------------------------------------------------------------- helpers
     def _headers(self, status, ctype='application/json; charset=utf-8', length=None):
@@ -232,6 +234,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
+        if path.startswith('/api/v3/') and not api_v3.valid_write(self):
+            return
         if api_v3.handle_public(self, 'POST', path):
             return
         if path.startswith('/api/v3/'):
@@ -250,6 +254,8 @@ class Handler(BaseHTTPRequestHandler):
         return self.v2_post(path, username)
 
     def do_DELETE(self):
+        if self.path.startswith('/api/v3/') and not api_v3.valid_write(self):
+            return
         path = urlsplit(self.path).path
         if path.startswith('/api/v3/'):
             if api_v3.handle_authed(self, 'DELETE', path):
@@ -632,25 +638,14 @@ def serve():
         )
     import migrations
     migrations.migrate(core.DB_PATH, log=print)
-    if auth_mode == 'own':
-        from auth import ensure_bootstrap_admins
-        with core.db() as conn:
-            created = ensure_bootstrap_admins(conn)
-        if created:
-            print(f'Bootstrap admins created: {len(created)}', flush=True)
+    with core.db() as conn:
+        conn.execute("UPDATE mind_tasks SET status='failed',error='HostRestart' WHERE status IN ('queued','running')")
     from knowledge import services
     services()['scheduler'].start(owner_check=is_owner)
     if os.environ.get('CHELSY_AUTO_CRAWL') == '1':
         threading.Thread(target=auto_research_loop, daemon=True).start()
     print(f'Chelsy AI Host {VERSION} ({auth_mode}) on http://{BIND}:{PORT}', flush=True)
     print('Клиенты: HTTPS-адрес Host + email/пароль (api/v3). Tailscale/Supabase не обязательны.', flush=True)
-    try:
-        import host_doctor
-        ts = host_doctor.tailscale_info()
-        if ts['serving'] and ts['url']:
-            print(f'(Опционально, legacy) Tailscale URL: {ts["url"]}', flush=True)
-    except Exception:
-        pass
     if BIND in ('127.0.0.1', '::1'):
         print('Локальный bind: для внешнего доступа поставьте reverse-proxy с TLS на этот порт.', flush=True)
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
@@ -658,6 +653,20 @@ def serve():
 
 def main(argv=None):
     args = sys.argv[1:] if argv is None else argv
+    if '--render-worker' in args:
+        from mind.artifacts import worker
+        sys.argv=[sys.argv[0],args[1]]
+        worker.main()
+        return 0
+    if '--init-admins' in args or '--create-user' in args:
+        from configure_accounts import main as accounts_main
+        sys.argv=[sys.argv[0],'admins' if '--init-admins' in args else 'user']
+        accounts_main()
+        return 0
+    if '--admin-panel' in args:
+        import runpy
+        runpy.run_module('admin_panel',run_name='__main__')
+        return 0
     if '--doctor' in args or '--setup-tailscale' in args:
         import host_doctor
         code = host_doctor.setup_tailscale() if '--setup-tailscale' in args else 0

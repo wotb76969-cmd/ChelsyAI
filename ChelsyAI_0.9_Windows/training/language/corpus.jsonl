@@ -1,0 +1,24 @@
+{"prompt": "Зачем нужен Host?", "answer": "Host хранит аккаунты и выполняет локальную генерацию.", "split": "train"}
+{"prompt": "Host выключен. Создай ответ через интернет.", "answer": "Для генерации нужен работающий Host. Подключитесь после его запуска.", "split": "train"}
+{"prompt": "Где мои документы?", "answer": "Откройте раздел «Мои файлы» в личном кабинете.", "split": "train"}
+{"prompt": "Что делать, если загрузка файла оборвалась?", "answer": "Проверьте подключение, откройте список готовых файлов и повторите скачивание.", "split": "train"}
+{"prompt": "Какой формат выбрать для редактируемого отчёта?", "answer": "Выберите DOCX. Он сохраняет редактируемый текст, списки и таблицы.", "split": "train"}
+{"prompt": "Мне нужна таблица расходов.", "answer": "Для чисел и итоговых формул подойдёт XLSX. Укажите статьи расходов и суммы.", "split": "train"}
+{"prompt": "Какие сведения нужны для презентации?", "answer": "Укажите тему, аудиторию и желаемое число слайдов.", "split": "train"}
+{"prompt": "Как проверить архив после скачивания?", "answer": "Вычислите SHA-256 архива и сравните со значением в описании поставки.", "split": "train"}
+{"prompt": "Может ли администратор читать чужие файлы?", "answer": "Администратор приложения управляет аккаунтами. Скачать личный файл может только владелец.", "split": "train"}
+{"prompt": "Когда готов PDF?", "answer": "Файл доступен после завершения генерации и проверки результата.", "split": "train"}
+{"prompt": "What does the Host do?", "answer": "The Host authenticates users and runs the local model.", "split": "train"}
+{"prompt": "Can I edit a presentation?", "answer": "Choose PPTX for editable slides and speaker notes.", "split": "train"}
+{"prompt": "What is a spreadsheet total?", "answer": "A total adds the numeric values in a selected range.", "split": "train"}
+{"prompt": "Where do I change my password?", "answer": "Open account security and enter your current password and the new password.", "split": "train"}
+{"prompt": "Can a downloaded document be revoked?", "answer": "Revoking a session stops future access. A downloaded copy stays on the device.", "split": "train"}
+{"prompt": "Can the assistant invent a download link?", "answer": "A download is available only after the Host stores and validates the file.", "split": "train"}
+{"prompt": "Какой файл подойдёт для печати?", "answer": "Для печати выберите PDF с встроенными шрифтами.", "split": "validation"}
+{"prompt": "Почему телефон не видит сервер за CGNAT?", "answer": "Для прямой связи нужен входящий публичный адрес IPv4 или доступный IPv6.", "split": "validation"}
+{"prompt": "Where can I see signed-in devices?", "answer": "Open the security section of your account to review active sessions.", "split": "validation"}
+{"prompt": "What information is needed for a budget?", "answer": "Provide categories, amounts, a currency, and the time period.", "split": "validation"}
+{"prompt": "Как безопасно закончить сеанс?", "answer": "Выйдите из аккаунта и проверьте список действующих сессий.", "split": "test"}
+{"prompt": "Что выбрать для простой заметки?", "answer": "Выберите TXT в кодировке UTF-8.", "split": "test"}
+{"prompt": "Which format preserves the layout for printing?", "answer": "PDF is suitable for a fixed print layout.", "split": "test"}
+{"prompt": "My Host is offline. Can it generate a new file?", "answer": "Reconnect when the Host is online to generate a new file.", "split": "test"}

@@ -1,0 +1,21 @@
+{
+  "base": "Qwen/Qwen2.5-0.5B-Instruct",
+  "revision": "7ae557604adf67be50417f59c2c2f167def9a775",
+  "seed": 42,
+  "steps": 16,
+  "trainable_parameters": 22528,
+  "evaluation": "mean per-example answer token cross-entropy, lower is better",
+  "before": {
+    "validation": 3.0309897661209106,
+    "test": 2.7306466698646545
+  },
+  "after": {
+    "validation": 2.8384107053279877,
+    "test": 2.5417948365211487
+  },
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "torch": "2.7.1+cpu",
+  "threads": 2,
+  "corpus_sha256": "fac7039b90bb1ab252d454a2bcc9f77cd5a1524fe240153dfb5a308bf7bc8f1d",
+  "adapter_sha256": "19c023def7fcda0f756bd84065626c046894601d4ae0c768e3df1541c65d8080"
+}

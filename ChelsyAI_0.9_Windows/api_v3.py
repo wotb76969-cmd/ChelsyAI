@@ -1,586 +1,332 @@
-"""Host API v3 (0.9.4): own Auth, cabinet, artifacts, admin — no Supabase/Tailscale required."""
-from __future__ import annotations
-
+"""Same-origin cabinet and native client API. All owner identifiers come from sessions."""
+from contextlib import closing
+from dataclasses import asdict
+from datetime import datetime, timezone
+from http.cookies import SimpleCookie, CookieError
+import base64
+import io
 import json
 import os
+from pathlib import Path
 import re
 import sqlite3
 import time
-from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote
 
+from PIL import Image
+from cryptography.exceptions import InvalidTag
 import core
-from auth import (
-    AuthError, authenticate_user, change_email, change_password, create_user,
-    create_session, ensure_bootstrap_admins, get_user, is_admin, list_sessions,
-    list_users_admin, resolve_access_token, refresh_session, revoke_all_sessions,
-    revoke_session, set_user_status, storage_key_for, update_profile,
-)
-from auth import accounts as accounts_mod
+import auth
+from auth import vault
 from mind import MindEngine
+from mind.runtime import ModelUnavailable
 
-VERSION = '0.9.4'
-UUID_RE = re.compile(r'^[0-9a-fA-F-]{36}$')
+VERSION='0.9.4'
+ROOT='/api/v3'
+ID=r'([0-9a-fA-F-]{36})'
 
-
-def artifacts_root() -> Path:
-    root = Path(core.DATA) / 'artifacts'
-    root.mkdir(parents=True, exist_ok=True)
-    return root
+class Failure(Exception):
+    def __init__(self,status,code,message):
+        self.status,self.code,self.message=status,code,message
 
 
 def db():
-    """Return a live SQLite connection (caller must commit; close when done).
-
-    Ensures migrations via a short core.db() enter/exit, then opens a dedicated
-    connection for multi-statement auth/mind handlers.
-    """
     with core.db():
         pass
-    conn = sqlite3.connect(core.DB_PATH, timeout=15)
-    conn.execute('PRAGMA busy_timeout=15000')
+    conn=sqlite3.connect(core.DB_PATH,timeout=15)
     return conn
 
 
-def json_body(handler, limit=20000):
-    length_text = handler.headers.get('Content-Length', '')
-    try:
-        length = int(length_text)
-    except ValueError:
-        handler.reply(411, {'error': 'Content-Length required'})
-        return None
-    if length < 2 or length > limit:
-        handler.reply(413, {'error': 'Request too large'})
-        return None
-    try:
-        data = json.loads(handler.rfile.read(length))
-    except (ValueError, UnicodeDecodeError):
-        handler.reply(400, {'error': 'Invalid JSON'})
-        return None
-    if not isinstance(data, dict):
-        handler.reply(400, {'error': 'JSON object required'})
-        return None
+def valid_write(h):
+    origin=h.headers.get('Origin')
+    if origin or h.headers.get('Cookie') or h.headers.get('Sec-Fetch-Site'):
+        expected=os.environ.get('CHELSY_PUBLIC_ORIGIN','https://'+h.headers.get('Host','')).rstrip('/')
+        if origin!=expected or h.headers.get('X-Chelsy-Request')!='cabinet':
+            h.reply(403,{'error':'origin_rejected','message':'Откройте кабинет на HTTPS-адресе Host.'})
+            return False
+    return True
+
+
+def body(h,limit=70000):
+    try: size=int(h.headers['Content-Length'])
+    except (TypeError,ValueError): raise Failure(411,'length_required','Требуется Content-Length.')
+    if size<0 or size>limit: raise Failure(413,'too_large','Превышен размер запроса.')
+    if h.headers.get_content_type()!='application/json': raise Failure(415,'unsupported','Требуется application/json.')
+    data=json.loads(h.rfile.read(size))
+    if not isinstance(data,dict): raise ValueError()
     return data
 
 
-def bearer(handler) -> str | None:
-    header = handler.headers.get('Authorization', '')
-    if header.startswith('Bearer '):
-        return header[7:].strip()
-    # Cookie session (WEB-04) — HttpOnly cookie set by login
-    cookie = handler.headers.get('Cookie', '')
-    for part in cookie.split(';'):
-        part = part.strip()
-        if part.startswith('chelsy_access='):
-            return part.split('=', 1)[1].strip()
-    return None
+def cookies(h):
+    jar=SimpleCookie()
+    try: jar.load(h.headers.get('Cookie',''))
+    except CookieError: return {}
+    return {name:item.value for name,item in jar.items()}
 
 
-def current_user(handler) -> dict | None:
-    token = bearer(handler)
-    if not token:
-        handler.reply(401, {'error': 'auth_required', 'message': 'Требуется вход'})
-        return None
-    conn = db()
-    session = resolve_access_token(conn, token)
-    if not session:
-        handler.reply(401, {'error': 'auth_required', 'message': 'Сессия истекла или отозвана'})
-        return None
-    user = get_user(conn, session['user_id'])
-    if not user or user['status'] != 'active':
-        handler.reply(401, {'error': 'auth_required', 'message': 'Аккаунт недоступен'})
-        return None
-    user['session_id'] = session['session_id']
-    user['storage_key'] = storage_key_for(user['id'])
-    return user
+def send(h,status,payload,headers=()):
+    data=json.dumps(payload,ensure_ascii=False).encode()
+    binary(h,status,data,'application/json; charset=utf-8',headers)
 
 
-def require_admin(handler) -> dict | None:
-    user = current_user(handler)
-    if not user:
-        return None
-    if not user.get('is_admin'):
-        handler.reply(403, {'error': 'forbidden', 'message': 'Нужны права администратора'})
-        return None
-    return user
+def binary(h,status,data,mime,headers=()):
+    h.send_response(status)
+    for k,v in [('Content-Type',mime),('Content-Length',str(len(data))),('Cache-Control','no-store'),('X-Content-Type-Options','nosniff'),*headers]:
+        h.send_header(k,v)
+    h.end_headers()
+    h.wfile.write(data)
 
 
-def set_auth_cookies(handler, tokens: dict, *, secure: bool = True):
-    """Set HttpOnly cookies for browser cabinet (SEC-02)."""
-    access = tokens['access_token']
-    refresh = tokens['refresh_token']
-    parts = [
-        f'chelsy_access={access}; Path=/; HttpOnly; SameSite=Strict; Max-Age={tokens["access_expires_in"]}',
-        f'chelsy_refresh={refresh}; Path=/api/v3/auth; HttpOnly; SameSite=Strict; Max-Age={tokens["refresh_expires_in"]}',
-    ]
-    if secure:
-        parts = [p + '; Secure' for p in parts]
-    for p in parts:
-        handler.send_header('Set-Cookie', p)
+def session_reply(h,user,tokens):
+    if h.headers.get('X-Chelsy-Request')=='cabinet':
+        headers=[('Set-Cookie',f'chelsy_{kind}={tokens[kind+"_token"]}; Path={path}; Secure; HttpOnly; SameSite=Strict; Max-Age={tokens[kind+"_expires_in"]}') for kind,path in [('access','/'),('refresh',ROOT+'/auth')]]
+        send(h,200,{'user':user},headers)
+    else:
+        h.reply(200,{'user':user,**tokens})
 
 
-def handle_public(handler, method: str, path: str) -> bool:
-    """Return True if handled. Public auth endpoints + health."""
-    if path == '/api/v3/health' and method == 'GET':
-        conn = db()
-        ensure_bootstrap_admins(conn)
-        conn.commit()
-        handler.reply(200, {
-            'service': 'Chelsy AI Host',
-            'version': VERSION,
-            'ok': True,
-            'auth': 'own',
-            'supabase_required': False,
-            'tailscale_required': False,
-        })
-        return True
+def active(h,conn):
+    token=h.headers.get('Authorization','').removeprefix('Bearer ') or cookies(h).get('chelsy_access','')
+    session=auth.resolve_access_token(conn,token)
+    conn.commit()
+    if not session: raise Failure(401,'auth_required','Войдите снова.')
+    uid=session['user_id']
+    user=auth.get_user(conn,uid)
+    if not user or user['status']!='active': raise Failure(401,'auth_required','Войдите снова.')
+    try: key=vault.recover(conn,session['session_id'],uid,token)
+    except (ValueError,InvalidTag): raise Failure(401,'login_required','Для открытия ключа войдите снова.')
+    user['must_change_password']=bool(conn.execute('SELECT 1 FROM required_password_change WHERE user_id=?',(uid,)).fetchone())
+    return user,session['session_id'],key
 
-    if path == '/api/v3/auth/register' and method == 'POST':
-        # Public self-registration only if explicitly enabled (NET-03 mail / local policy)
-        if os.environ.get('CHELSY_ALLOW_PUBLIC_REGISTER', '0') != '1':
-            handler.reply(403, {
-                'error': 'registration_disabled',
-                'message': 'Публичная регистрация отключена. Аккаунт создаёт администратор Host.',
-            })
-            return True
-        body = json_body(handler)
-        if body is None:
-            return True
+
+def login(h,conn):
+    data=body(h)
+    email,password=data.get('email'),data.get('password')
+    if not isinstance(email,str) or not isinstance(password,str) or len(email)>254 or len(password)>128:
+        raise Failure(401,'auth_error','Неверный email или пароль.')
+    user=auth.authenticate_user(conn,email,password,source=h.client_address[0])
+    key=vault.unlock(conn,user['id'],password)
+    tokens=auth.create_session(conn,user['id'],is_admin=user['is_admin'],device_label=str(data.get('device_label','client'))[:120],user_agent=h.headers.get('User-Agent',''),source_ip=h.client_address[0])
+    vault.bind(conn,tokens,user['id'],key)
+    conn.commit()
+    user['must_change_password']=bool(conn.execute('SELECT 1 FROM required_password_change WHERE user_id=?',(user['id'],)).fetchone())
+    session_reply(h,user,tokens)
+
+
+def refresh(h,conn):
+    data=body(h)
+    secret=data.get('refresh_token') or cookies(h).get('chelsy_refresh','')
+    try:
+        tokens=auth.refresh_session(conn,secret)
+        uid=tokens.pop('user_id')
+        tokens.pop('is_admin')
+        key=vault.recover(conn,tokens['session_id'],uid,secret,refresh=True)
+        vault.bind(conn,tokens,uid,key)
+    except (ValueError,InvalidTag):
+        conn.commit()  # preserve revocation on reuse
+        raise Failure(401,'invalid_refresh','Сессия истекла. Войдите снова.')
+    conn.commit()
+    session_reply(h,auth.get_user(conn,uid),tokens)
+
+
+def facts(conn,uid,key):
+    return [{'id':fid,'text':vault.open_json(key,box,fid)} for fid,box in conn.execute('SELECT id,payload FROM private_facts WHERE user_id=? ORDER BY rowid DESC LIMIT 100',(uid,))]
+
+
+def history(conn,uid,key):
+    rows=conn.execute('SELECT id,created,payload,favorite FROM private_history WHERE user_id=? ORDER BY created DESC',(uid,))
+    return [dict(id=rid,created=created,favorite=bool(fav),**vault.open_json(key,payload,rid)) for rid,created,payload,fav in rows]
+
+
+def tasks(conn,uid):
+    return [dict(zip(('id','kind','status','progress','error','created'),row)) for row in conn.execute('SELECT id,kind,status,progress,error,created FROM mind_tasks WHERE user_id=? ORDER BY created DESC LIMIT 100',(uid,))]
+
+
+def avatar(h,conn,user,key):
+    data=body(h,limit=1400000)
+    image=Image.open(io.BytesIO(base64.b64decode(data['image'],validate=True)))
+    if image.format not in ('JPEG','PNG','WEBP') or image.width*image.height>4000000: raise ValueError()
+    image.thumbnail((384,384))
+    buf=io.BytesIO()
+    image.convert('RGB').save(buf,format='JPEG',quality=85)
+    uid=user['id']
+    encoded=vault.seal(key,base64.b64encode(buf.getvalue()).decode(),uid+'/avatar')
+    conn.execute('UPDATE auth_users SET avatar_path=? WHERE id=?',(encoded,uid))
+    conn.commit()
+    h.reply(200,{'ok':True})
+
+
+def handle_public(h,method,path):
+    if not path.startswith(ROOT+'/'): return False
+    with closing(db()) as conn:
         try:
-            conn = db()
-            user = create_user(conn, body.get('email', ''), body.get('password', ''),
-                               display_name=str(body.get('display_name') or '')[:80])
-            tokens = create_session(conn, user['id'], device_label='web',
-                                    user_agent=handler.headers.get('User-Agent', '')[:240],
-                                    source_ip=handler.client_address[0])
-            conn.commit()
-            data = json.dumps({'user': {k: user[k] for k in ('id', 'email', 'display_name', 'role')},
-                               **tokens}, ensure_ascii=False).encode('utf-8')
-            handler.send_response(201)
-            handler.send_header('Content-Type', 'application/json; charset=utf-8')
-            handler.send_header('Cache-Control', 'no-store')
-            set_auth_cookies(handler, tokens, secure=handler.headers.get('X-Forwarded-Proto') == 'https'
-                             or os.environ.get('CHELSY_COOKIE_SECURE', '0') == '1')
-            handler.send_header('Content-Length', str(len(data)))
-            handler.end_headers()
-            handler.wfile.write(data)
-        except AuthError as exc:
-            handler.reply(400, {'error': 'auth_error', 'message': str(exc)})
-        return True
-
-    if path == '/api/v3/auth/login' and method == 'POST':
-        body = json_body(handler)
-        if body is None:
-            return True
-        try:
-            conn = db()
-            ensure_bootstrap_admins(conn)
-            user = authenticate_user(conn, body.get('email', ''), body.get('password', ''),
-                                     source=handler.client_address[0])
-            tokens = create_session(
-                conn, user['id'], is_admin=user['is_admin'],
-                device_label=str(body.get('device_label') or 'client')[:120],
-                user_agent=handler.headers.get('User-Agent', '')[:240],
-                source_ip=handler.client_address[0],
-            )
-            conn.commit()
-            payload = {
-                'user': {
-                    'id': user['id'], 'email': user['email'], 'display_name': user['display_name'],
-                    'role': user['role'], 'is_admin': user['is_admin'],
-                    'storage_key': user['storage_key'],
-                },
-                **tokens,
-            }
-            data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
-            handler.send_response(200)
-            handler.send_header('Content-Type', 'application/json; charset=utf-8')
-            handler.send_header('Cache-Control', 'no-store')
-            set_auth_cookies(handler, tokens, secure=handler.headers.get('X-Forwarded-Proto') == 'https'
-                             or os.environ.get('CHELSY_COOKIE_SECURE', '0') == '1')
-            handler.send_header('Content-Length', str(len(data)))
-            handler.end_headers()
-            handler.wfile.write(data)
-        except AuthError as exc:
-            handler.reply(401, {'error': 'auth_error', 'message': str(exc)})
-        return True
-
-    if path == '/api/v3/auth/refresh' and method == 'POST':
-        body = json_body(handler) or {}
-        refresh = (body or {}).get('refresh_token')
-        if not refresh:
-            cookie = handler.headers.get('Cookie', '')
-            for part in cookie.split(';'):
-                part = part.strip()
-                if part.startswith('chelsy_refresh='):
-                    refresh = part.split('=', 1)[1].strip()
-        try:
-            conn = db()
-            tokens = refresh_session(conn, refresh or '')
-            conn.commit()
-            user = get_user(conn, tokens.pop('user_id'))
-            tokens.pop('is_admin', None)
-            payload = {'user': user, **tokens}
-            data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
-            handler.send_response(200)
-            handler.send_header('Content-Type', 'application/json; charset=utf-8')
-            set_auth_cookies(handler, tokens, secure=os.environ.get('CHELSY_COOKIE_SECURE', '0') == '1')
-            handler.send_header('Content-Length', str(len(data)))
-            handler.end_headers()
-            handler.wfile.write(data)
-        except ValueError:
-            handler.reply(401, {'error': 'invalid_refresh', 'message': 'Сессия недействительна'})
-        return True
-
-    return False
+            if method=='GET' and path==ROOT+'/health':
+                h.reply(200,dict(service='Chelsy AI Host',version=VERSION,ok=True,auth='own'))
+            elif method=='POST' and path==ROOT+'/auth/login': login(h,conn)
+            elif method=='POST' and path==ROOT+'/auth/refresh': refresh(h,conn)
+            elif path==ROOT+'/auth/register':
+                raise Failure(403,'registration_disabled','Аккаунты создаёт владелец Host. Почтовая регистрация отключена.')
+            else: private(h,conn,method,path.removeprefix(ROOT))
+        except Failure as e: h.reply(e.status,{'error':e.code,'message':e.message})
+        except auth.AuthError as e: h.reply(401 if path.endswith('/auth/login') else 400,{'error':'auth_error','message':str(e)})
+        except ModelUnavailable as e: h.reply(503,{'error':'model_unavailable','message':str(e)})
+        except (PermissionError,LookupError): h.reply(404,{'error':'not_found'})
+        except InterruptedError: h.reply(409,{'error':'cancelled','message':'Задача отменена.'})
+        except RuntimeError as e: h.reply(429,{'error':'busy','message':str(e)})
+        except (ValueError,TypeError,AttributeError,Image.DecompressionBombError): h.reply(400,{'error':'invalid','message':'Проверьте параметры или структуру результата модели.'})
+        except (OSError,sqlite3.Error,InvalidTag) as e:
+            if not isinstance(e,(BrokenPipeError,ConnectionResetError)):
+                h.reply(503,{'error':'storage_error','message':'Операция не завершена. Проверьте состояние Host.'})
+    return True
 
 
-def handle_authed(handler, method: str, path: str) -> bool:
-    if not path.startswith('/api/v3/'):
-        return False
-    # logout
-    if path == '/api/v3/auth/logout' and method == 'POST':
-        user = current_user(handler)
-        if not user:
-            return True
-        conn = db()
-        revoke_session(conn, user['session_id'], user['id'])
+handle_authed=handle_public
+
+
+def private(h,conn,method,path):
+    user,sid,key=active(h,conn)
+    uid=user['id']
+    user['has_avatar']=bool(user.pop('avatar_path',''))
+    engine=MindEngine(conn,Path(core.DATA)/'artifacts',key=key)
+    action=(method,path)
+    if user['must_change_password'] and path not in ('/me','/me/password','/auth/logout'):
+        raise Failure(403,'change_password','Сначала измените первоначальный пароль в разделе безопасности.')
+    if action==('GET','/me'):
+        return h.reply(200,{'user':user,'version':VERSION})
+    if action==('POST','/me'):
+        data=body(h)
+        if 'locale' in data and data['locale'] not in ('ru','en'): raise ValueError()
+        if 'timezone' in data and not isinstance(data['timezone'],str): raise ValueError()
+        fields={k:v for k,v in data.items() if k in ('locale','timezone','display_name','memory_enabled')}
+        result=auth.update_profile(conn,uid,**fields)
+        result.pop('avatar_path',None)
         conn.commit()
-        handler.send_response(200)
-        handler.send_header('Content-Type', 'application/json; charset=utf-8')
-        handler.send_header('Set-Cookie', 'chelsy_access=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict')
-        handler.send_header('Set-Cookie', 'chelsy_refresh=; Path=/api/v3/auth; Max-Age=0; HttpOnly; SameSite=Strict')
-        data = b'{"ok":true}'
-        handler.send_header('Content-Length', str(len(data)))
-        handler.end_headers()
-        handler.wfile.write(data)
-        return True
-
-    if path == '/api/v3/me' and method == 'GET':
-        user = current_user(handler)
-        if user:
-            handler.reply(200, {'user': user, 'version': VERSION})
-        return True
-
-    if path == '/api/v3/me' and method == 'POST':
-        user = current_user(handler)
-        if not user:
-            return True
-        body = json_body(handler)
-        if body is None:
-            return True
-        conn = db()
-        updated = accounts_mod.update_profile(
-            conn, user['id'],
-            display_name=body.get('display_name', user['display_name']),
-            locale=body.get('locale', user['locale']),
-            timezone=body.get('timezone', user['timezone']),
-            memory_enabled=body.get('memory_enabled', user['memory_enabled']),
-        )
+        return h.reply(200,{'user':result})
+    if action==('POST','/me/avatar'): return avatar(h,conn,user,key)
+    if action==('GET','/me/avatar'):
+        box=conn.execute('SELECT avatar_path FROM auth_users WHERE id=?',(uid,)).fetchone()[0]
+        if not box: raise LookupError()
+        return binary(h,200,base64.b64decode(vault.open_json(key,box,uid+'/avatar')),'image/jpeg')
+    if action==('POST','/me/password'):
+        data=body(h)
+        auth.change_password(conn,uid,data.get('current_password',''),data.get('new_password',''))
+        conn.execute('DELETE FROM required_password_change WHERE user_id=?',(uid,))
+        auth.revoke_all_sessions(conn,uid)
         conn.commit()
-        handler.reply(200, {'user': updated})
-        return True
-
-    if path == '/api/v3/me/password' and method == 'POST':
-        user = current_user(handler)
-        if not user:
-            return True
-        body = json_body(handler)
-        if body is None:
-            return True
-        try:
-            conn = db()
-            change_password(conn, user['id'], body.get('current_password', ''), body.get('new_password', ''))
-            revoke_all_sessions(conn, user['id'])
-            tokens = create_session(conn, user['id'], is_admin=user['is_admin'], device_label='password-change')
-            conn.commit()
-            handler.reply(200, {'ok': True, **tokens})
-        except AuthError as exc:
-            handler.reply(400, {'error': 'auth_error', 'message': str(exc)})
-        return True
-
-    if path == '/api/v3/me/email' and method == 'POST':
-        user = current_user(handler)
-        if not user:
-            return True
-        body = json_body(handler)
-        if body is None:
-            return True
-        try:
-            conn = db()
-            change_email(conn, user['id'], body.get('password', ''), body.get('new_email', ''))
-            revoke_all_sessions(conn, user['id'])
-            conn.commit()
-            handler.reply(200, {'ok': True, 'message': 'Email изменён. Войдите снова. Подтверждение нового адреса — по политике Host.'})
-        except AuthError as exc:
-            handler.reply(400, {'error': 'auth_error', 'message': str(exc)})
-        return True
-
-    if path == '/api/v3/me/sessions' and method == 'GET':
-        user = current_user(handler)
-        if not user:
-            return True
-        handler.reply(200, {'sessions': list_sessions(db(), user['id'])})
-        return True
-
-    if path.startswith('/api/v3/me/sessions/') and method == 'DELETE':
-        user = current_user(handler)
-        if not user:
-            return True
-        sid = path.rsplit('/', 1)[-1]
-        conn = db()
-        ok = revoke_session(conn, sid, user['id'])
+        return h.reply(200,{'ok':True,'login_required':True})
+    if action==('POST','/me/email'):
+        from auth import mail
+        data=body(h)
+        if data.get('code'):
+            mail.confirm(conn,uid,data.get('password',''),data['code'])
+            return h.reply(200,{'changed':True})
+        mail.request(conn,uid,data.get('password',''),data.get('new_email',''))
+        return h.reply(202,{'confirmation_required':True})
+    if action==('POST','/auth/logout'):
+        auth.revoke_session(conn,sid,uid)
         conn.commit()
-        handler.reply(200 if ok else 404, {'revoked': ok})
-        return True
-
-    if path == '/api/v3/me/sessions' and method == 'DELETE':
-        user = current_user(handler)
-        if not user:
-            return True
-        conn = db()
-        n = revoke_all_sessions(conn, user['id'], except_id=user['session_id'])
+        return send(h,200,{'ok':True},[('Set-Cookie',f'chelsy_{kind}=; Path={p}; Secure; HttpOnly; SameSite=Strict; Max-Age=0') for kind,p in [('access','/'),('refresh',ROOT+'/auth')]])
+    if action==('GET','/me/sessions'): return h.reply(200,{'sessions':auth.list_sessions(conn,uid)})
+    if method=='DELETE' and (path=='/me/sessions' or path.startswith('/me/sessions/')):
+        count=auth.revoke_all_sessions(conn,uid,except_id=sid) if path=='/me/sessions' else auth.revoke_session(conn,path.rsplit('/',1)[-1],uid)
         conn.commit()
-        handler.reply(200, {'revoked': n})
-        return True
-
-    # ---- overview / cabinet
-    if path == '/api/v3/cabinet/overview' and method == 'GET':
-        user = current_user(handler)
-        if not user:
-            return True
-        conn = db()
-        tasks = conn.execute(
-            "SELECT COUNT(*) FROM mind_tasks WHERE user_id=? AND status IN ('queued','running')",
-            (user['id'],),
-        ).fetchone()[0]
-        files = conn.execute(
-            'SELECT COUNT(*), COALESCE(SUM(size_bytes),0) FROM mind_artifacts WHERE user_id=?',
-            (user['id'],),
-        ).fetchone()
+        return h.reply(200,{'revoked':count})
+    if action==('GET','/cabinet/overview'):
         import ollama_client
-        handler.reply(200, {
-            'host': {'version': VERSION, 'ollama': ollama_client.available()},
-            'tasks_active': tasks,
-            'files_count': files[0],
-            'files_bytes': files[1],
-            'quota_mb_used': user['quota_mb_used'],
-            'quota_mb_limit': user['quota_mb_limit'],
-            'host_reachable': True,
-        })
-        return True
-
-    # ---- mind / artifacts
-    if path == '/api/v3/mind/run' and method == 'POST':
-        user = current_user(handler)
-        if not user:
-            return True
-        body = json_body(handler, limit=70000)
-        if body is None:
-            return True
-        text = body.get('message') or body.get('text') or ''
-        if not isinstance(text, str) or not text.strip() or len(text) > 8000:
-            handler.reply(400, {'error': 'invalid_message'})
-            return True
-        conn = db()
-        engine = MindEngine(conn, artifacts_root())
-
-        def generate_text(prompt, plan):
-            try:
-                from intelligence import IntelligenceEngine
-                # Prefer existing intelligence stack when available
-                ie = IntelligenceEngine(conn if False else None)  # may not take conn
-            except Exception:
-                ie = None
-            try:
-                import ollama_client
-                if ollama_client.available():
-                    # lightweight non-stream call
-                    from ollama_client import chat
-                    messages = [
-                        {'role': 'system', 'content': f'Ты Chelsy. Язык: {plan.params.get("language")}. Кратко и по делу.'},
-                        {'role': 'user', 'content': prompt},
-                    ]
-                    # chat API may differ — fall back
-                    if hasattr(ollama_client, 'chat'):
-                        return ollama_client.chat(messages) or ''
-            except Exception:
-                pass
-            return ''
-
-        try:
-            result = engine.handle(
-                user['id'], text.strip(),
-                idempotency_key=str(body.get('idempotency_key') or ''),
-                generate_text=generate_text if body.get('use_model', True) else None,
-            )
-            conn.commit()
-            handler.reply(200, {
-                'route': result.route,
-                'stages': result.stages,
-                'answer': result.answer,
-                'artifact_id': result.artifact_id,
-                'task_id': result.task_id,
-                'meta': result.meta,
-            })
-        except PermissionError as exc:
-            handler.reply(403, {'error': 'forbidden', 'message': str(exc)})
-        except RuntimeError as exc:
-            handler.reply(429, {'error': 'busy', 'message': str(exc)})
-        except ValueError as exc:
-            handler.reply(400, {'error': 'invalid', 'message': str(exc)})
-        except Exception as exc:
-            handler.reply(500, {'error': 'internal', 'message': 'Ошибка Mind Engine', 'detail': type(exc).__name__})
-        return True
-
-    if path == '/api/v3/artifacts' and method == 'GET':
-        user = current_user(handler)
-        if not user:
-            return True
-        engine = MindEngine(db(), artifacts_root())
-        handler.reply(200, {'artifacts': engine.list_artifacts(user['id'])})
-        return True
-
-    m = re.fullmatch(r'/api/v3/artifacts/([0-9a-fA-F-]{36})(?:/(download))?', path)
-    if m and method == 'GET':
-        user = current_user(handler)
-        if not user:
-            return True
-        engine = MindEngine(db(), artifacts_root())
-        try:
-            art = engine.get_artifact(user['id'], m.group(1))
-        except (LookupError, PermissionError):
-            handler.reply(404, {'error': 'not_found'})
-            return True
-        if m.group(2) == 'download':
-            path_file = Path(art['storage_path'])
-            if not path_file.is_file():
-                handler.reply(410, {'error': 'missing_file', 'message': 'Файл отсутствует на диске'})
-                return True
-            data = path_file.read_bytes()
-            handler.send_response(200)
-            handler.send_header('Content-Type', art['mime'])
-            handler.send_header('Content-Length', str(len(data)))
-            handler.send_header('Content-Disposition', f'attachment; filename="{art["filename"]}"')
-            handler.send_header('X-Content-Type-Options', 'nosniff')
-            handler.send_header('Cache-Control', 'no-store')
-            handler.end_headers()
-            handler.wfile.write(data)
-            return True
-        # metadata only — never leak other users via IDOR
-        public = {k: art[k] for k in art if k != 'storage_path'}
-        handler.reply(200, {'artifact': public})
-        return True
-
-    if m and method == 'DELETE':
-        user = current_user(handler)
-        if not user:
-            return True
-        conn = db()
-        engine = MindEngine(conn, artifacts_root())
-        try:
-            art = engine.get_artifact(user['id'], m.group(1))
-        except (LookupError, PermissionError):
-            handler.reply(404, {'error': 'not_found'})
-            return True
-        Path(art['storage_path']).unlink(missing_ok=True)
-        conn.execute('DELETE FROM mind_artifacts WHERE id=? AND user_id=?', (art['id'], user['id']))
+        files,size=conn.execute('SELECT count(*),coalesce(sum(size_bytes),0) FROM mind_artifacts WHERE user_id=?',(uid,)).fetchone()
+        return h.reply(200,dict(host={'version':VERSION,'ollama':ollama_client.available(),'runtime':'PEFT' if os.getenv('CHELSY_LOCAL_BASE') else 'Ollama'},tasks_active=sum(t['status'] in ('queued','running') for t in tasks(conn,uid)),files_count=files,files_bytes=size,quota_mb_used=round(size/1048576,2),quota_mb_limit=user['quota_mb_limit']))
+    if action==('POST','/mind/run'):
+        data=body(h)
+        message=data.get('message',data.get('text',''))
+        if not isinstance(message,str) or not 0<len(message.strip())<=8000: raise ValueError()
+        result=engine.handle(uid,message.strip(),idempotency_key=str(data.get('idempotency_key','')))
+        active(h,conn)
+        return h.reply(200,asdict(result))
+    if action==('GET','/memory'):
+        return h.reply(200,{'facts':facts(conn,uid,key)})
+    if action==('POST','/memory'):
+        import uuid
+        value=body(h).get('text')
+        if not isinstance(value,str) or not 1<=len(value.strip())<=2000: raise ValueError()
+        if conn.execute('SELECT count(*) FROM private_facts WHERE user_id=?',(uid,)).fetchone()[0]>=100: raise ValueError()
+        fid=str(uuid.uuid4())
+        conn.execute('INSERT INTO private_facts VALUES(?,?,?)',(fid,uid,vault.seal(key,value.strip(),fid)))
         conn.commit()
-        handler.reply(200, {'deleted': True})
-        return True
-
-    # ---- admin (no private content)
-    if path == '/api/v3/admin/users' and method == 'GET':
-        admin = require_admin(handler)
-        if not admin:
-            return True
-        handler.reply(200, {'users': list_users_admin(db())})
-        return True
-
-    if path == '/api/v3/admin/users' and method == 'POST':
-        admin = require_admin(handler)
-        if not admin:
-            return True
-        body = json_body(handler)
-        if body is None:
-            return True
-        try:
-            conn = db()
-            user = create_user(
-                conn, body.get('email', ''), body.get('password', ''),
-                display_name=str(body.get('display_name') or '')[:80],
-                role='user', created_by=admin['id'],
-            )
+        return h.reply(201,{'id':fid})
+    fact=re.fullmatch('/memory/'+ID,path)
+    if method=='DELETE' and fact:
+        cur=conn.execute('DELETE FROM private_facts WHERE id=? AND user_id=?',(fact[1],uid))
+        conn.commit()
+        if not cur.rowcount: raise LookupError()
+        return h.reply(200,{'deleted':True})
+    if action==('GET','/tasks'): return h.reply(200,{'tasks':tasks(conn,uid)})
+    task=re.fullmatch('/tasks/'+ID+'/(cancel|repeat)',path)
+    if method=='POST' and task:
+        tid,op=task.groups()
+        if op=='cancel': return h.reply(200,{'cancelled':engine.cancel_task(uid,tid)})
+        row=conn.execute('SELECT params_json FROM mind_tasks WHERE user_id=? AND id=?',(uid,tid)).fetchone()
+        if not row: raise LookupError()
+        data=body(h)
+        return h.reply(200,asdict(engine.handle(uid,vault.open_json(key,row[0],tid),idempotency_key=str(data.get('idempotency_key','')))))
+    if action==('GET','/history'): return h.reply(200,{'history':history(conn,uid,key)})
+    item=re.fullmatch('/history/'+ID,path)
+    if item and method in ('POST','DELETE'):
+        if method=='POST':
+            cur=conn.execute('UPDATE private_history SET favorite=? WHERE user_id=? AND id=?',(bool(body(h).get('favorite')),uid,item[1]))
+        else:
+            cur=conn.execute('DELETE FROM private_history WHERE user_id=? AND id=?',(uid,item[1]))
+            if cur.rowcount: conn.execute("DELETE FROM mind_tasks WHERE id=? AND user_id=? AND status='done'",(item[1],uid))
+        conn.commit()
+        if not cur.rowcount: raise LookupError()
+        return h.reply(200,{'ok':True})
+    if action==('GET','/export'):
+        return h.reply(200,{'profile':user,'memory':facts(conn,uid,key),'history':history(conn,uid,key),'artifacts':engine.list_artifacts(uid),'tasks':tasks(conn,uid)})
+    if action==('POST','/me/deletion'):
+        data=body(h)
+        auth.authenticate_user(conn,user['email'],data.get('password',''),source=h.client_address[0])
+        conn.execute('INSERT OR IGNORE INTO deletion_requests VALUES(?,?)',(uid,datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        return h.reply(202,{'requested':True})
+    if action==('GET','/artifacts'): return h.reply(200,{'artifacts':engine.list_artifacts(uid)})
+    item=re.fullmatch('/artifacts/'+ID+'(?:/(download))?',path)
+    if item and method in ('GET','DELETE'):
+        art=engine.get_artifact(uid,item[1])
+        if method=='DELETE':
+            conn.execute('DELETE FROM mind_artifacts WHERE id=? AND user_id=?',(item[1],uid))
             conn.commit()
-            handler.reply(201, {'user': user})
-        except AuthError as exc:
-            handler.reply(400, {'error': 'auth_error', 'message': str(exc)})
-        return True
-
-    if path.startswith('/api/v3/admin/users/') and path.endswith('/status') and method == 'POST':
-        admin = require_admin(handler)
-        if not admin:
-            return True
-        uid = path.split('/')[4]
-        if not UUID_RE.match(uid):
-            handler.reply(400, {'error': 'bad_id'})
-            return True
-        body = json_body(handler) or {}
-        try:
-            conn = db()
-            set_user_status(conn, admin['id'], uid, body.get('status', ''), reason=str(body.get('reason') or ''))
-            if body.get('status') == 'blocked':
-                revoke_all_sessions(conn, uid)
+            Path(art['storage_path']).unlink(missing_ok=True)
+            return h.reply(200,{'deleted':True})
+        if item[2]:
+            return binary(h,200,engine.read(art),art['mime'],[('Content-Disposition',"attachment; filename*=UTF-8''"+quote(art['filename'],safe=''))])
+        art.pop('storage_path')
+        return h.reply(200,{'artifact':art})
+    if path.startswith('/admin/'):
+        if not user['is_admin']: raise Failure(403,'forbidden','Нужны права администратора.')
+        if action in (('POST','/admin/replacements'),('POST','/admin/replacements/approve')):
+            from auth.administrators import change
+            data=body(h)
+            proposal=data.get('id') if path.endswith('/approve') else None
+            if path.endswith('/approve') and not proposal: raise ValueError()
+            pid=change(conn,uid,data.get('old',''),data.get('new',''),str(data.get('reason','')),proposal)
+            return h.reply(200,{'id':pid,'status':'approved' if proposal else 'pending'})
+        if action==('GET','/admin/users'): return h.reply(200,{'users':auth.list_users_admin(conn)})
+        if action==('POST','/admin/users'):
+            data=body(h)
+            new=auth.create_user(conn,data.get('email',''),data.get('password',''),created_by=uid)
+            conn.execute('INSERT INTO required_password_change VALUES(?)',(new['id'],))
             conn.commit()
-            handler.reply(200, {'ok': True})
-        except AuthError as exc:
-            handler.reply(400, {'error': 'auth_error', 'message': str(exc)})
-        return True
-
-    if path == '/api/v3/admin/status' and method == 'GET':
-        admin = require_admin(handler)
-        if not admin:
-            return True
-        conn = db()
-        sessions = conn.execute(
-            'SELECT COUNT(*) FROM auth_sessions WHERE revoked=0 AND access_expires > ?',
-            (time.time(),),
-        ).fetchone()[0]
-        users = conn.execute("SELECT COUNT(*) FROM auth_users WHERE status='active'").fetchone()[0]
-        queue = conn.execute(
-            "SELECT COUNT(*) FROM mind_tasks WHERE status IN ('queued','running')"
-        ).fetchone()[0]
-        import ollama_client
-        handler.reply(200, {
-            'version': VERSION,
-            'active_sessions': sessions,
-            'active_users': users,
-            'queue_len': queue,
-            'ollama': ollama_client.available(),
-            # Explicitly no message content fields
-            'privacy': 'admin_cannot_read_user_content',
-        })
-        return True
-
-    if path == '/api/v3/admin/errors' and method == 'GET':
-        admin = require_admin(handler)
-        if not admin:
-            return True
-        rows = db().execute(
-            'SELECT at, code, module, request_id, category, message FROM host_error_log '
-            'ORDER BY id DESC LIMIT 100'
-        ).fetchall()
-        handler.reply(200, {
-            'errors': [
-                {'at': r[0], 'code': r[1], 'module': r[2], 'request_id': r[3],
-                 'category': r[4], 'message': r[5]}
-                for r in rows
-            ]
-        })
-        return True
-
-    # Unknown v3
-    if path.startswith('/api/v3/'):
-        handler.reply(404, {'error': 'not_found'})
-        return True
-    return False
+            return h.reply(201,{'user':new})
+        item=re.fullmatch('/admin/users/'+ID+'/status',path)
+        if item and method=='POST':
+            data=body(h)
+            auth.set_user_status(conn,uid,item[1],data.get('status'),str(data.get('reason','')))
+            if data.get('status')!='active': auth.revoke_all_sessions(conn,item[1])
+            conn.commit()
+            return h.reply(200,{'ok':True})
+        if action==('GET','/admin/status'):
+            import ollama_client
+            return h.reply(200,dict(version=VERSION,ollama=ollama_client.available(),active_users=conn.execute("SELECT count(*) FROM auth_users WHERE status='active'").fetchone()[0],active_sessions=conn.execute('SELECT count(*) FROM auth_sessions WHERE revoked=0 AND access_expires>?',(time.time(),)).fetchone()[0],queue_len=conn.execute("SELECT count(*) FROM mind_tasks WHERE status IN ('queued','running')").fetchone()[0]))
+        if action==('GET','/admin/errors'):
+            rows=conn.execute("SELECT updated,error FROM mind_tasks WHERE status='failed' ORDER BY updated DESC LIMIT 100")
+            return h.reply(200,{'errors':[{'at':at,'code':code,'module':'mind','message':'Ошибка задачи'} for at,code in rows]})
+    raise LookupError()
